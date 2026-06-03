@@ -1,0 +1,1944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>ODIROGA — Where Are You Going?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+/* ── RESET & TOKENS ───────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --white:#ffffff;
+  --off-white:#f7f6f3;
+  --gray-50:#f4f4f2;
+  --gray-100:#e8e8e4;
+  --gray-200:#d0d0c8;
+  --gray-400:#9a9a90;
+  --gray-600:#5c5c54;
+  --gray-800:#2a2a24;
+  --black:#0d0d0a;
+  --bts:#7c4dff;      /* BTS purple */
+  --bts-light:#ede7ff;
+  --xia:#e8005a;      /* XIA red-pink */
+  --xia-light:#ffe0ec;
+  --accent:#ff4400;
+  --subway:#1565c0;
+  --bus:#e65100;
+  --font-display:'Space Grotesk',sans-serif;
+  --font-body:'DM Sans',sans-serif;
+  --radius:14px;
+  --radius-sm:8px;
+  --shadow:0 2px 16px rgba(0,0,0,.08),0 1px 3px rgba(0,0,0,.06);
+  --shadow-lg:0 8px 40px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06);
+}
+html,body{height:100%;background:var(--white);font-family:var(--font-body);color:var(--gray-800);overflow:hidden}
+
+/* ── MAP ──────────────────────────────────────────── */
+#map{position:fixed;inset:0;z-index:0}
+/* Keep map tiles clean / light */
+.leaflet-tile-pane{filter:saturate(.95)brightness(1.02)}
+
+/* ── HEADER ───────────────────────────────────────── */
+#header{
+  position:fixed;top:0;left:0;right:0;z-index:600;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;height:52px;
+  background:rgba(255,255,255,.92);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--gray-100);
+}
+.logo{
+  font-family:var(--font-display);font-size:18px;font-weight:700;
+  letter-spacing:-.3px;color:var(--black);
+}
+.logo span{color:var(--accent)}
+.header-sub{font-size:10px;color:var(--gray-400);font-weight:500;letter-spacing:.5px;text-transform:uppercase;margin-top:1px}
+
+/* ── RIGHT SIDE PANEL ─────────────────────────────── */
+#sheet{
+  position:fixed;top:52px;right:0;bottom:0;z-index:500;
+  width:360px;
+  background:var(--white);
+  border-left:1px solid var(--gray-100);
+  box-shadow:-4px 0 32px rgba(0,0,0,.08);
+  transition:transform .38s cubic-bezier(.32,1.1,.4,1);
+  display:flex;flex-direction:column;
+}
+/* states: hidden = off screen, collapsed = just pills visible, open = full */
+#sheet.hidden{transform:translateX(100%)}
+#sheet.open{transform:translateX(0)}
+
+/* toggle tab on left edge of panel */
+.sheet-handle{
+  position:absolute;left:-36px;top:50%;transform:translateY(-50%);
+  width:36px;height:72px;
+  background:var(--white);
+  border:1px solid var(--gray-100);border-right:none;
+  border-radius:10px 0 0 10px;
+  box-shadow:-3px 0 12px rgba(0,0,0,.06);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;
+  font-size:14px;
+  writing-mode:horizontal-tb;
+  flex-shrink:0;
+  z-index:1;
+}
+
+/* ── CONCERT PILL STRIP ───────────────────────────── */
+#concert-strip{
+  display:flex;gap:8px;padding:12px 16px 10px;
+  overflow-x:auto;flex-shrink:0;
+  scrollbar-width:none;
+}
+#concert-strip::-webkit-scrollbar{display:none}
+.concert-pill{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 14px;border-radius:40px;
+  border:1.5px solid var(--gray-100);
+  background:var(--white);
+  cursor:pointer;white-space:nowrap;
+  transition:all .18s;flex-shrink:0;
+  box-shadow:var(--shadow);
+}
+.concert-pill.active-bts{background:var(--bts);border-color:var(--bts);color:var(--white)}
+.concert-pill.active-xia{background:var(--xia);border-color:var(--xia);color:var(--white)}
+.concert-pill:not(.active-bts):not(.active-xia):hover{border-color:var(--gray-200);background:var(--gray-50)}
+.pill-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.pill-label{font-family:var(--font-display);font-size:12px;font-weight:600}
+.pill-date{font-size:10px;opacity:.75;margin-top:1px}
+
+/* ── AIRPORT TABS ─────────────────────────────────── */
+#airport-tabs{
+  display:flex;gap:8px;padding:0 16px 12px;flex-shrink:0;
+}
+.ap-tab{
+  flex:1;padding:10px 8px;border-radius:var(--radius-sm);
+  border:1.5px solid var(--gray-100);background:var(--gray-50);
+  text-align:center;cursor:pointer;transition:all .18s;
+}
+.ap-tab.active{background:var(--black);border-color:var(--black);color:var(--white)}
+.ap-tab .ap-code{font-family:var(--font-display);font-size:14px;font-weight:700}
+.ap-tab .ap-name{font-size:9px;color:inherit;opacity:.65;margin-top:2px}
+
+/* ── PANEL SCROLL CONTENT ─────────────────────────── */
+#sheet-body{
+  flex:1;overflow-y:auto;padding:0 16px 32px;
+  scrollbar-width:thin;scrollbar-color:var(--gray-200) transparent;
+}
+#sheet-body::-webkit-scrollbar{width:3px}
+#sheet-body::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:2px}
+
+/* Section title */
+.sec-title{
+  font-family:var(--font-display);font-size:13px;font-weight:600;
+  color:var(--gray-400);letter-spacing:.6px;text-transform:uppercase;
+  margin:16px 0 10px;
+}
+
+/* ── ROUTE CARD ───────────────────────────────────── */
+.route-card{
+  background:var(--white);border:1.5px solid var(--gray-100);
+  border-radius:var(--radius);margin-bottom:10px;
+  overflow:hidden;cursor:pointer;
+  box-shadow:var(--shadow);
+  transition:border-color .18s,box-shadow .18s,transform .12s;
+}
+.route-card:hover{border-color:var(--gray-200);box-shadow:var(--shadow-lg);transform:translateY(-1px)}
+.route-card:active{transform:scale(.99)}
+.rc-head{
+  display:flex;align-items:center;gap:10px;
+  padding:12px 14px 10px;
+  border-bottom:1px solid var(--gray-100);
+}
+.rc-icon{
+  width:36px;height:36px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;flex-shrink:0;background:var(--gray-50);
+}
+.rc-title{font-family:var(--font-display);font-size:13px;font-weight:600;flex:1}
+.rc-subtitle{font-size:10px;color:var(--gray-400);margin-top:1px}
+.rc-badge{
+  font-size:9px;font-weight:700;padding:3px 7px;
+  border-radius:20px;white-space:nowrap;flex-shrink:0;
+}
+.badge-green{background:#e8f5e9;color:#2e7d32}
+.badge-blue{background:#e3f2fd;color:#1565c0}
+.badge-orange{background:#fff3e0;color:#e65100}
+.badge-purple{background:#ede7ff;color:#5e35b1}
+.rc-steps{padding:10px 14px 12px;display:flex;flex-direction:column;gap:8px}
+.step-row{display:flex;align-items:flex-start;gap:10px}
+.step-mode{
+  width:26px;height:26px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;flex-shrink:0;background:var(--gray-50);
+  border:1px solid var(--gray-100);
+}
+.step-body{flex:1}
+.step-main{font-size:12px;font-weight:500;color:var(--gray-800);line-height:1.4}
+.step-sub{font-size:10px;color:var(--gray-400);margin-top:2px}
+.step-chips{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap}
+.chip{
+  font-size:9px;font-weight:600;padding:2px 7px;
+  border-radius:10px;display:inline-flex;align-items:center;gap:3px;
+}
+.chip-time{background:#f3f4f6;color:var(--gray-600)}
+.chip-cost{background:#fef9c3;color:#854d0e}
+.chip-rec{background:#dcfce7;color:#166534}
+.chip-free{background:#dbeafe;color:#1e40af}
+.rc-footer{
+  padding:10px 14px;border-top:1px solid var(--gray-100);
+  background:var(--gray-50);display:flex;gap:6px;
+}
+
+/* ── ACTION BUTTONS ───────────────────────────────── */
+.action-btn{
+  flex:1;padding:9px 6px;border:none;border-radius:var(--radius-sm);
+  font-family:var(--font-body);font-size:11px;font-weight:600;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  gap:5px;transition:opacity .15s,transform .1s;
+}
+.action-btn:active{transform:scale(.95);opacity:.85}
+.btn-kakao{background:#FAE100;color:#3A1D1D}
+.btn-uber{background:#000;color:#fff}
+.btn-google{background:#fff;color:#333;border:1.5px solid var(--gray-200)!important}
+.btn-google:hover{border-color:var(--gray-300)!important;background:var(--gray-50)}
+.btn-copy{background:var(--white);color:var(--gray-600);border:1.5px solid var(--gray-200)!important}
+.btn-copy:hover{border-color:var(--gray-400)!important}
+
+/* Taxi info bar */
+.taxi-bar{
+  margin:8px 14px;padding:10px 12px;
+  background:linear-gradient(135deg,#fff9f0,#fff3e0);
+  border:1px solid #ffe0b2;border-radius:var(--radius-sm);
+  font-size:11px;color:#7c4700;line-height:1.6;
+}
+.taxi-bar strong{font-weight:700;font-size:12px}
+.taxi-dest{
+  margin-top:6px;padding:6px 8px;background:rgba(255,255,255,.7);
+  border-radius:6px;border:1px solid #ffcc80;
+}
+.taxi-dest .dest-row{display:flex;align-items:center;gap:6px;font-size:10px}
+.taxi-dest .dest-label{color:#a0522d;font-weight:600;flex-shrink:0}
+.taxi-dest .dest-val{color:#4a2c00;flex:1}
+
+/* ── MEETUP SECTION ───────────────────────────────── */
+.meetup-card{
+  background:var(--white);border:1.5px solid var(--gray-100);
+  border-radius:var(--radius);margin-bottom:8px;padding:12px 14px;
+  cursor:pointer;box-shadow:var(--shadow);
+  transition:border-color .18s,box-shadow .18s;position:relative;
+}
+.meetup-card:hover{border-color:var(--gray-200);box-shadow:var(--shadow-lg)}
+.meetup-card.joined{border-color:#86efac;background:#f0fdf4}
+.mc-left-bar{position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0}
+.mc-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.mc-fandom{
+  font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;flex-shrink:0;
+}
+.mc-name{font-weight:600;font-size:13px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mc-meta{display:flex;align-items:center;gap:10px;font-size:10px;color:var(--gray-400)}
+.mc-count{margin-left:auto;font-weight:700;font-size:11px;color:var(--gray-600)}
+.mc-join{
+  display:block;width:100%;margin-top:8px;padding:7px;border:none;
+  border-radius:var(--radius-sm);font-family:var(--font-body);
+  font-size:11px;font-weight:600;cursor:pointer;transition:opacity .15s;
+}
+.mc-join.join-bts{background:var(--bts);color:#fff}
+.mc-join.join-xia{background:var(--xia);color:#fff}
+.mc-join.joined{background:var(--gray-50);color:var(--gray-400);border:1.5px solid var(--gray-200)}
+.mc-join:active{opacity:.8}
+
+/* ── CREATE MEETUP ────────────────────────────────── */
+#create-btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;padding:13px;margin:8px 0;
+  background:var(--black);color:var(--white);
+  border:none;border-radius:var(--radius);
+  font-family:var(--font-display);font-size:14px;font-weight:600;
+  cursor:pointer;transition:opacity .15s,transform .1s;
+  letter-spacing:-.1px;
+}
+#create-btn:active{opacity:.85;transform:scale(.99)}
+
+/* ── FLOATING MAP CONTROLS ────────────────────────── */
+#map-btns{
+  position:fixed;left:14px;top:64px;z-index:499;
+  display:flex;flex-direction:column;gap:8px;
+}
+.map-btn{
+  width:40px;height:40px;border-radius:10px;
+  background:rgba(255,255,255,.92);backdrop-filter:blur(10px);
+  border:1px solid var(--gray-100);box-shadow:var(--shadow);
+  display:flex;align-items:center;justify-content:center;font-size:16px;
+  cursor:pointer;transition:all .15s;
+}
+.map-btn:hover{background:var(--white);box-shadow:var(--shadow-lg)}
+.map-btn:active{transform:scale(.92)}
+.map-btn.active{background:var(--black);color:var(--white);border-color:var(--black)}
+
+/* ── MAP MARKERS ──────────────────────────────────── */
+.venue-label{
+  background:white;border:1.5px solid #e0e0e0;
+  border-radius:8px;padding:4px 8px;
+  font-family:var(--font-display);font-size:10px;font-weight:600;
+  white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.1);
+  cursor:pointer;transition:transform .15s;display:flex;align-items:center;gap:5px;
+}
+.venue-label:hover{transform:scale(1.06)}
+.venue-label.bts-venue{border-color:var(--bts);color:var(--bts)}
+.venue-label.xia-venue{border-color:var(--xia);color:var(--xia)}
+
+.airport-label{
+  background:white;border:1.5px solid #cfd8dc;
+  border-radius:8px;padding:4px 8px;
+  font-family:var(--font-display);font-size:10px;font-weight:700;
+  white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.1);
+  cursor:pointer;display:flex;align-items:center;gap:4px;color:var(--gray-600);
+}
+.airport-label.selected{border-color:var(--black);color:var(--black);background:#f8f8f8}
+
+.mu-pin{
+  display:flex;flex-direction:column;align-items:center;cursor:pointer;
+  filter:drop-shadow(0 2px 6px rgba(0,0,0,.18));
+  transition:transform .15s;
+}
+.mu-pin:hover{transform:scale(1.12)}
+.mu-pin-body{
+  width:28px;height:28px;border-radius:50% 50% 50% 0;
+  transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;
+  border:2px solid rgba(255,255,255,.6);
+}
+.mu-pin-emoji{transform:rotate(45deg);font-size:13px}
+.mu-pin-tag{
+  margin-top:2px;background:white;font-size:7px;font-weight:700;
+  padding:1px 4px;border-radius:4px;border:1px solid rgba(0,0,0,.1);
+  white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.1);
+}
+
+/* route polyline pulse */
+@keyframes dash-flow{to{stroke-dashoffset:-24}}
+
+/* ── MODAL ────────────────────────────────────────── */
+#modal-overlay{
+  position:fixed;inset:0;z-index:800;
+  background:rgba(0,0,0,.4);backdrop-filter:blur(4px);
+  display:none;align-items:flex-end;justify-content:center;
+}
+#modal-overlay.open{display:flex}
+#modal{
+  background:var(--white);border-radius:20px 20px 0 0;
+  width:100%;max-width:480px;padding:20px 20px 40px;
+  animation:slide-up .28s cubic-bezier(.32,1.1,.4,1);
+  max-height:92vh;overflow-y:auto;
+}
+@keyframes slide-up{from{transform:translateY(60px);opacity:0}to{transform:none;opacity:1}}
+#modal h2{font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:16px}
+.modal-close{
+  float:right;width:28px;height:28px;border-radius:50%;
+  background:var(--gray-100);border:none;font-size:16px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  color:var(--gray-600);transition:background .15s;margin-top:-2px;
+}
+.modal-close:hover{background:var(--gray-200)}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:11px;font-weight:600;color:var(--gray-600);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}
+.field input,.field select,.field textarea{
+  width:100%;padding:10px 12px;
+  border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);
+  font-family:var(--font-body);font-size:13px;color:var(--gray-800);
+  background:var(--white);outline:none;transition:border-color .15s;
+  -webkit-appearance:none;
+}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--black)}
+.field textarea{resize:none;height:52px}
+.field select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239a9a90' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+.chip-select{display:flex;flex-wrap:wrap;gap:6px}
+.sel-chip{
+  padding:5px 10px;border-radius:20px;font-size:11px;font-weight:600;
+  border:1.5px solid var(--gray-200);cursor:pointer;color:var(--gray-600);
+  background:var(--white);transition:all .15s;
+}
+.sel-chip.sel{color:var(--white);border-color:transparent}
+#modal-loc-hint{font-size:10px;color:var(--gray-400);margin-top:4px;text-align:center}
+.submit-btn{
+  width:100%;padding:13px;background:var(--black);color:var(--white);
+  border:none;border-radius:var(--radius);font-family:var(--font-display);
+  font-size:14px;font-weight:600;cursor:pointer;margin-top:4px;
+  transition:opacity .15s;
+}
+.submit-btn:active{opacity:.85}
+
+/* ── TOAST ────────────────────────────────────────── */
+#toast{
+  position:fixed;bottom:32px;left:calc(50% - 180px);transform:translateX(-50%) translateY(8px);
+  background:var(--black);color:var(--white);
+  font-size:12px;font-weight:500;padding:9px 18px;
+  border-radius:20px;z-index:900;display:none;
+  white-space:nowrap;opacity:0;
+  transition:opacity .25s,transform .25s;
+}
+#toast.show{display:block;opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── HEATMAP CANVAS ───────────────────────────────── */
+#hmap{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:0;transition:opacity .4s}
+#hmap.on{opacity:1}
+
+/* ── PICK HINT ────────────────────────────────────── */
+#pick-hint{
+  position:fixed;top:62px;left:50%;transform:translateX(-50%);
+  background:var(--black);color:var(--white);
+  font-size:12px;font-weight:600;padding:9px 18px;
+  border-radius:20px;z-index:700;display:none;
+  white-space:nowrap;box-shadow:var(--shadow-lg);
+}
+
+/* ── LEAFLET POPUP ────────────────────────────────── */
+.leaflet-popup-content-wrapper{
+  border-radius:12px!important;box-shadow:var(--shadow-lg)!important;
+  border:1.5px solid var(--gray-100)!important;padding:0!important;
+  overflow:hidden;
+}
+.leaflet-popup-content{margin:0!important;font-family:var(--font-body)!important}
+.leaflet-popup-tip-container{display:none}
+.leaflet-popup-close-button{
+  top:8px!important;right:8px!important;
+  width:22px!important;height:22px!important;
+  background:var(--gray-100)!important;border-radius:50%!important;
+  display:flex!important;align-items:center!important;justify-content:center!important;
+  font-size:14px!important;color:var(--gray-600)!important;line-height:1!important;
+}
+
+/* ── POPUP INNER ──────────────────────────────────── */
+.pu-inner{padding:14px 16px 12px}
+.pu-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.pu-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px}
+.pu-name{font-family:var(--font-display);font-weight:700;font-size:14px}
+.pu-row{font-size:11px;color:var(--gray-400);margin-bottom:3px}
+.pu-btn{
+  display:block;width:100%;margin-top:10px;padding:8px;border:none;
+  border-radius:var(--radius-sm);font-family:var(--font-body);
+  font-size:12px;font-weight:600;cursor:pointer;
+}
+
+/* ── SCROLL HELPERS ───────────────────────────────── */
+#sheet-body .empty{
+  text-align:center;padding:32px 0;color:var(--gray-400);font-size:13px;
+}
+
+/* ── TAB ROW in sheet ─────────────────────────────── */
+.tab-row{
+  display:flex;gap:0;padding:0 16px 0;flex-shrink:0;
+  border-bottom:1px solid var(--gray-100);
+}
+.tab-item{
+  flex:1;text-align:center;padding:10px 6px;
+  font-family:var(--font-display);font-size:12px;font-weight:600;
+  color:var(--gray-400);cursor:pointer;
+  border-bottom:2px solid transparent;transition:all .18s;
+  margin-bottom:-1px;
+}
+.tab-item.active{color:var(--black);border-color:var(--black)}
+
+/* ── ONBOARDING MODAL ─────────────────────────────── */
+#onboarding{
+  position:fixed;inset:0;z-index:900;
+  background:rgba(0,0,0,.5);backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;padding:16px;
+}
+#onboarding-box{
+  background:var(--white);border-radius:20px;
+  width:100%;max-width:400px;max-height:90vh;overflow-y:auto;
+  box-shadow:0 24px 60px rgba(0,0,0,.2);
+  animation:slide-up .3s cubic-bezier(.32,1.1,.4,1);
+}
+.ob-header{padding:24px 20px 0}
+.ob-header h2{font-family:var(--font-display);font-size:20px;font-weight:700;margin-bottom:4px}
+.ob-header p{font-size:13px;color:var(--gray-400);line-height:1.5}
+.ob-section{padding:16px 20px 0}
+.ob-section-title{font-size:10px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
+.ob-city-tabs{display:flex;gap:6px;margin-bottom:12px}
+.ob-city-tab{
+  flex:1;padding:8px;border-radius:8px;text-align:center;
+  border:1.5px solid var(--gray-100);background:var(--gray-50);
+  font-family:var(--font-display);font-size:12px;font-weight:600;
+  cursor:pointer;transition:all .15s;color:var(--gray-600);
+}
+.ob-city-tab.active{background:var(--black);border-color:var(--black);color:var(--white)}
+.hotel-zone-grid{display:flex;flex-direction:column;gap:7px}
+.hotel-zone-card{
+  display:flex;align-items:center;gap:12px;
+  padding:11px 13px;border-radius:var(--radius-sm);
+  border:1.5px solid var(--gray-100);background:var(--white);
+  cursor:pointer;transition:all .18s;
+}
+.hotel-zone-card:hover{border-color:var(--gray-300);background:var(--gray-50)}
+.hotel-zone-card.selected{border-color:var(--black);background:#f8f8f8}
+.hz-emoji{font-size:22px;flex-shrink:0}
+.hz-info{flex:1}
+.hz-name{font-family:var(--font-display);font-size:13px;font-weight:600}
+.hz-name-ko{font-size:10px;color:var(--gray-400);margin-top:1px}
+.hz-desc{font-size:10px;color:var(--gray-400);margin-top:2px}
+.hz-check{
+  width:20px;height:20px;border-radius:50%;
+  border:1.5px solid var(--gray-200);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:11px;
+  transition:all .15s;
+}
+.hotel-zone-card.selected .hz-check{background:var(--black);border-color:var(--black);color:white}
+.ob-footer{padding:16px 20px 24px;display:flex;gap:8px}
+.ob-skip{flex:1;padding:11px;background:var(--gray-50);border:1.5px solid var(--gray-100);border-radius:var(--radius-sm);font-family:var(--font-display);font-size:13px;font-weight:600;color:var(--gray-400);cursor:pointer;transition:all .15s}
+.ob-skip:hover{border-color:var(--gray-200);color:var(--gray-600)}
+.ob-confirm{flex:2;padding:11px;background:var(--black);border:none;border-radius:var(--radius-sm);font-family:var(--font-display);font-size:13px;font-weight:600;color:var(--white);cursor:pointer;transition:opacity .15s}
+.ob-confirm:active{opacity:.85}
+.ob-confirm:disabled{background:var(--gray-200);color:var(--gray-400);cursor:default}
+
+/* ── MY HOTEL BADGE in panel ──────────────────────── */
+#my-hotel-bar{
+  display:flex;align-items:center;gap:10px;
+  margin:0 16px 0;padding:10px 12px;
+  background:var(--gray-50);border:1.5px solid var(--gray-100);
+  border-radius:var(--radius-sm);cursor:pointer;
+  transition:border-color .15s;flex-shrink:0;
+}
+#my-hotel-bar:hover{border-color:var(--gray-300)}
+#my-hotel-bar .mhb-emoji{font-size:18px;flex-shrink:0}
+#my-hotel-bar .mhb-info{flex:1}
+#my-hotel-bar .mhb-label{font-size:9px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.4px}
+#my-hotel-bar .mhb-name{font-family:var(--font-display);font-size:12px;font-weight:600;color:var(--black)}
+#my-hotel-bar .mhb-change{font-size:10px;color:var(--gray-400)}
+
+/* ── JOURNEY COMPARISON CARD ──────────────────────── */
+.journey-compare{
+  background:var(--white);border:1.5px solid var(--gray-100);
+  border-radius:var(--radius);overflow:hidden;
+  box-shadow:var(--shadow);margin-bottom:10px;
+}
+.jc-header{
+  padding:12px 14px 10px;
+  border-bottom:1px solid var(--gray-100);
+  display:flex;align-items:center;gap:8px;
+}
+.jc-header-icon{font-size:18px}
+.jc-header-title{font-family:var(--font-display);font-size:13px;font-weight:700;flex:1}
+.jc-header-badge{font-size:9px;font-weight:700;padding:3px 8px;border-radius:10px}
+.jc-legs{display:flex;flex-direction:column;gap:0}
+.jc-leg{
+  padding:10px 14px;border-bottom:1px solid var(--gray-100);
+  position:relative;
+}
+.jc-leg:last-child{border-bottom:none}
+.jc-leg-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.jc-leg-from-to{
+  display:flex;align-items:center;gap:6px;flex:1;
+  font-family:var(--font-display);font-size:11px;font-weight:600;
+}
+.jc-from{color:var(--gray-500)}
+.jc-arrow{color:var(--gray-300);font-size:10px}
+.jc-to{color:var(--black)}
+.jc-leg-time{
+  font-family:var(--font-display);font-size:13px;font-weight:700;
+  color:var(--black);flex-shrink:0;
+}
+.jc-leg-steps{display:flex;flex-direction:column;gap:5px}
+.jc-total{
+  padding:10px 14px;background:var(--gray-50);
+  border-top:1.5px solid var(--gray-100);
+  display:flex;align-items:center;gap:8px;
+}
+.jc-total-label{font-size:11px;color:var(--gray-400);flex:1}
+.jc-total-time{font-family:var(--font-display);font-size:16px;font-weight:700;color:var(--black)}
+.jc-total-cost{font-size:10px;color:var(--gray-400);margin-left:4px}
+.jc-actions{padding:8px 14px 12px;display:flex;gap:6px}
+
+/* faster badge */
+.badge-fastest{background:#dcfce7;color:#166534}
+.badge-slower{background:var(--gray-50);color:var(--gray-400)}
+</style>
+</head>
+<body>
+
+<!-- MAP + HEATMAP -->
+<div id="map"></div>
+<canvas id="hmap"></canvas>
+
+<!-- HEADER -->
+<div id="header">
+  <div>
+    <div class="logo">odiroga<span>.</span></div>
+    <div class="header-sub">Where are you going?</div>
+  </div>
+  <!-- close / info -->
+  <button onclick="recenter()" style="background:var(--gray-50);border:1.5px solid var(--gray-200);border-radius:8px;padding:7px 12px;font-family:var(--font-display);font-size:11px;font-weight:600;cursor:pointer;color:var(--gray-600)">📍 Reset</button>
+</div>
+
+<!-- FLOATING MAP BUTTONS -->
+<div id="map-btns">
+  <div class="map-btn" id="btn-heatmap" onclick="toggleHeatmap()" title="Fan heatmap">🔥</div>
+  <div class="map-btn" id="btn-routes" onclick="toggleRoutes()" title="Show routes">✈️</div>
+</div>
+
+<!-- RIGHT SIDE PANEL -->
+<div id="sheet" class="open">
+  <div class="sheet-handle" id="sheet-handle" onclick="togglePanel()" title="Toggle panel">◀</div>
+
+  <!-- Panel header with close -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 0;flex-shrink:0">
+    <div style="font-family:var(--font-display);font-size:13px;font-weight:700;color:var(--black)">odiroga<span style="color:var(--accent)">.</span></div>
+    <button onclick="togglePanel()" style="width:28px;height:28px;border-radius:50%;background:var(--gray-100);border:none;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--gray-600)" title="Close panel">✕</button>
+  </div>
+
+  <!-- Concert pills -->
+  <div id="concert-strip">
+    <div class="concert-pill active-bts" id="pill-bts" onclick="selectConcert('bts')">
+      <div class="pill-dot" style="background:#fff"></div>
+      <div>
+        <div class="pill-label">BTS 'ARIRANG'</div>
+        <div class="pill-date">Jun 12–13 · Busan</div>
+      </div>
+    </div>
+    <div class="concert-pill" id="pill-xia" onclick="selectConcert('xia')">
+      <div class="pill-dot" style="background:var(--xia)"></div>
+      <div>
+        <div class="pill-label">XIA 'GRAVITY'</div>
+        <div class="pill-date">Jun 12–14 · Seoul</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Airport tabs -->
+  <div id="airport-tabs">
+    <!-- filled by JS -->
+  </div>
+
+  <!-- My Hotel Bar -->
+  <div id="my-hotel-bar" onclick="openOnboarding()" style="display:none">
+    <div class="mhb-emoji" id="mhb-emoji">🏨</div>
+    <div class="mhb-info">
+      <div class="mhb-label">My Stay</div>
+      <div class="mhb-name" id="mhb-name">—</div>
+    </div>
+    <div class="mhb-change">Change →</div>
+  </div>
+
+  <!-- Sheet body tabs -->
+  <div class="tab-row">
+    <div class="tab-item active" id="tab-routes" onclick="switchTab('routes')">🗺 Routes</div>
+    <div class="tab-item" id="tab-meetups" onclick="switchTab('meetups')">📍 Meet-ups</div>
+  </div>
+
+  <!-- Content -->
+  <div id="sheet-body"></div>
+</div>
+
+<!-- CREATE MEETUP MODAL -->
+<div id="modal-overlay" onclick="closeModal(event)">
+  <div id="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <h2>Create Meet-up 📍</h2>
+    <div class="field">
+      <label>Name</label>
+      <input id="mi-name" placeholder="e.g. ARMY gathering before show 💜">
+    </div>
+    <div class="field">
+      <label>Concert</label>
+      <select id="mi-concert">
+        <option value="bts">BTS 'ARIRANG' — Busan Jun 12–13</option>
+        <option value="xia">XIA 'GRAVITY' — Seoul Jun 12–14</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Time</label>
+      <input id="mi-time" type="time" value="17:00">
+    </div>
+    <div class="field">
+      <label>Languages spoken</label>
+      <div class="chip-select" id="mi-langs">
+        <div class="sel-chip sel" data-l="🇺🇸 EN">🇺🇸 EN</div>
+        <div class="sel-chip sel" data-l="🇰🇷 KR">🇰🇷 KR</div>
+        <div class="sel-chip" data-l="🇯🇵 JP">🇯🇵 JP</div>
+        <div class="sel-chip" data-l="🇨🇳 CN">🇨🇳 CN</div>
+        <div class="sel-chip" data-l="🇹🇭 TH">🇹🇭 TH</div>
+        <div class="sel-chip" data-l="🇵🇭 PH">🇵🇭 PH</div>
+        <div class="sel-chip" data-l="🇧🇷 PT">🇧🇷 PT</div>
+        <div class="sel-chip" data-l="🇪🇸 ES">🇪🇸 ES</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Note (optional)</label>
+      <textarea id="mi-note" placeholder="Meet at Exit 2, bring lightsticks!"></textarea>
+    </div>
+    <div id="modal-loc-hint">📌 Tap the map to set your meeting location</div>
+    <button class="submit-btn" onclick="confirmCreate()">Create Meet-up →</button>
+  </div>
+</div>
+
+<!-- ONBOARDING MODAL -->
+<div id="onboarding">
+  <div id="onboarding-box">
+    <div class="ob-header">
+      <h2>👋 Where are you staying?</h2>
+      <p>We'll show you the fastest routes from your hotel to the concert — and compare with going straight from the airport.</p>
+    </div>
+    <div class="ob-section">
+      <div class="ob-section-title">City</div>
+      <div class="ob-city-tabs">
+        <div class="ob-city-tab active" id="ob-seoul" data-city="seoul">Seoul 서울</div>
+        <div class="ob-city-tab" id="ob-busan" data-city="busan">Busan 부산</div>
+      </div>
+      <div class="ob-section-title">Neighbourhood</div>
+      <div class="hotel-zone-grid" id="ob-zone-list"></div>
+    </div>
+    <div class="ob-footer">
+      <button class="ob-skip" id="ob-skip-btn">Skip for now</button>
+      <button class="ob-confirm" id="ob-confirm" disabled>Confirm →</button>
+    </div>
+  </div>
+</div>
+
+<div id="pick-hint">📌 Tap map to set location</div>
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════════════════
+
+const CONCERTS = {
+  bts: {
+    id:'bts', name:"BTS 'ARIRANG'", dates:'Jun 12–13, 2026',
+    venue:'Busan Asiad Main Stadium', venueKo:'부산아시아드주경기장',
+    lat:35.2094, lng:129.0728, color:'#7c4dff', emoji:'💜',
+    fandom:'ARMY', city:'Busan',
+    ticketUrl:'https://tickets.interpark.com/goods/26005547',
+  },
+  xia: {
+    id:'xia', name:"XIA 'GRAVITY'", dates:'Jun 12–14, 2026',
+    venue:'KSPO DOME', venueKo:'KSPO DOME (올림픽공원)',
+    lat:37.5196, lng:127.1225, color:'#e8005a', emoji:'❤️',
+    fandom:'XIA Fans', city:'Seoul',
+    ticketUrl:'https://tickets.interpark.com',
+  },
+};
+
+const AIRPORTS = [
+  {
+    id:'ICN', name:'Incheon Intl', code:'ICN',
+    lat:37.4602, lng:126.4407,
+    concertRoutes:{
+      bts:[
+        {mode:'🚌', label:'Airport Limousine → Busan',
+         steps:[
+           {m:'🚌',t:'Airport Limousine Bus (T1 1F)',s:'Direct to Busan ~ 4–5 hrs',chips:[{l:'4–5 hrs',c:'chip-time'},{l:'₩33,000',c:'chip-cost'}]},
+         ],
+         taxiFare:'₩250,000–320,000', taxiTime:'3.5–4 hrs',
+         destKo:'부산 아시아드주경기장, 부산 연제구 아시아드대로 206',
+         destEn:'Busan Asiad Main Stadium, 206 Asiad-daero, Yeonje-gu, Busan',
+         toll:'Expressway toll ₩22,000 approx.',
+         uberDest:'Busan+Asiad+Main+Stadium+Busan',
+        },
+        {mode:'✈️', label:'Fly ICN → Gimhae + transit',
+         steps:[
+           {m:'✈️',t:'Fly ICN → Gimhae (GMP)',s:'~1 hr flight, Jeju Air / Jin Air',chips:[{l:'1 hr',c:'chip-time'},{l:'₩50,000~',c:'chip-cost'}]},
+           {m:'🚇',t:'Gimhae Airport → Busan Asiad',s:'Bus 58 or taxi from airport',chips:[{l:'30 min',c:'chip-time'},{l:'₩5,000~',c:'chip-cost'},{l:'Recommended',c:'chip-rec'}]},
+         ],
+         taxiFare:'₩25,000–35,000', taxiTime:'30–40 min (from Gimhae)',
+         destKo:'부산 아시아드주경기장, 부산 연제구 아시아드대로 206',
+         destEn:'Busan Asiad Main Stadium, 206 Asiad-daero, Yeonje-gu, Busan',
+         toll:'No toll from Gimhae',
+         uberDest:'Busan+Asiad+Main+Stadium+Busan',
+        },
+      ],
+      xia:[
+        {mode:'🚇', label:'AREX Express → Seoul → KSPO',
+         steps:[
+           {m:'🚇',t:'AREX Express Train → Seoul Station',s:'Non-stop, 43 min',chips:[{l:'43 min',c:'chip-time'},{l:'₩11,000',c:'chip-cost'},{l:'Recommended',c:'chip-rec'}]},
+           {m:'🚇',t:'Seoul Stn → Olympic Park Stn',s:'Line 5, ~40 min',chips:[{l:'40 min',c:'chip-time'},{l:'₩1,550',c:'chip-cost'}]},
+           {m:'🚶',t:'Olympic Park Stn → KSPO DOME',s:'Exit 3, 8 min walk',chips:[{l:'8 min',c:'chip-time'}]},
+         ],
+         taxiFare:'₩75,000–95,000', taxiTime:'60–80 min',
+         destKo:'KSPO DOME, 서울 송파구 올림픽로 424',
+         destEn:'KSPO DOME, 424 Olympic-ro, Songpa-gu, Seoul',
+         toll:'Expressway bridge toll ₩7,400',
+         uberDest:'KSPO+DOME+424+Olympic-ro+Songpa+Seoul',
+        },
+        {mode:'🚗', label:'Taxi / Uber direct',
+         steps:[
+           {m:'🚗',t:'Taxi or Uber from ICN',s:'Olympic Expressway route',chips:[{l:'60–80 min',c:'chip-time'},{l:'₩75,000–95,000',c:'chip-cost'}]},
+         ],
+         taxiFare:'₩75,000–95,000', taxiTime:'60–80 min',
+         destKo:'KSPO DOME, 서울 송파구 올림픽로 424',
+         destEn:'KSPO DOME, 424 Olympic-ro, Songpa-gu, Seoul',
+         toll:'Bridge toll ₩7,400 extra',
+         uberDest:'KSPO+DOME+424+Olympic-ro+Songpa+Seoul',
+        },
+      ],
+    },
+  },
+  {
+    id:'GMP', name:'Gimpo Intl', code:'GMP',
+    lat:37.5583, lng:126.7906,
+    concertRoutes:{
+      bts:[
+        {mode:'✈️', label:'Fly GMP → Gimhae (recommended)',
+         steps:[
+           {m:'✈️',t:'Fly GMP → Gimhae Airport (PUS)',s:'~55 min, frequent flights',chips:[{l:'55 min',c:'chip-time'},{l:'₩40,000~',c:'chip-cost'},{l:'Recommended',c:'chip-rec'}]},
+           {m:'🚇',t:'Bus/Taxi to Busan Asiad',s:'City bus 58 from airport',chips:[{l:'30 min',c:'chip-time'},{l:'₩2,500~',c:'chip-cost'}]},
+         ],
+         taxiFare:'₩25,000–35,000', taxiTime:'30–40 min (from Gimhae)',
+         destKo:'부산 아시아드주경기장, 부산 연제구 아시아드대로 206',
+         destEn:'Busan Asiad Main Stadium, 206 Asiad-daero, Yeonje-gu, Busan',
+         toll:'No toll from Gimhae',
+         uberDest:'Busan+Asiad+Main+Stadium+Busan',
+        },
+        {mode:'🚌', label:'Express bus GMP → Busan',
+         steps:[
+           {m:'🚇',t:'GMP → Seoul Express Bus Terminal',s:'Line 9 or taxi',chips:[{l:'40 min',c:'chip-time'},{l:'₩2,150',c:'chip-cost'}]},
+           {m:'🚌',t:'Express Bus → Busan (Nopo/Seobu)',s:'Departs every 30 min',chips:[{l:'4–4.5 hrs',c:'chip-time'},{l:'₩24,000',c:'chip-cost'}]},
+         ],
+         taxiFare:'₩250,000–310,000', taxiTime:'3.5–4.5 hrs (full trip)',
+         destKo:'부산 아시아드주경기장, 부산 연제구 아시아드대로 206',
+         destEn:'Busan Asiad Main Stadium, 206 Asiad-daero, Yeonje-gu, Busan',
+         toll:'Expressway toll included in bus fare',
+         uberDest:'Busan+Asiad+Main+Stadium+Busan',
+        },
+      ],
+      xia:[
+        {mode:'🚇', label:'Metro Line 5 → KSPO DOME',
+         steps:[
+           {m:'🚇',t:'Gimpo Airport Stn → Olympic Park Stn',s:'Line 5 direct, no transfer!',chips:[{l:'50–60 min',c:'chip-time'},{l:'₩1,950',c:'chip-cost'},{l:'No transfer',c:'chip-rec'}]},
+           {m:'🚶',t:'Olympic Park Stn Exit 3 → KSPO',s:'8 min walk',chips:[{l:'8 min',c:'chip-time'}]},
+         ],
+         taxiFare:'₩35,000–50,000', taxiTime:'35–50 min',
+         destKo:'KSPO DOME, 서울 송파구 올림픽로 424',
+         destEn:'KSPO DOME, 424 Olympic-ro, Songpa-gu, Seoul',
+         toll:'No toll',
+         uberDest:'KSPO+DOME+424+Olympic-ro+Songpa+Seoul',
+        },
+        {mode:'🚗', label:'Taxi / Uber direct',
+         steps:[
+           {m:'🚗',t:'Taxi or Uber from GMP',s:'Olympic Expressway',chips:[{l:'35–50 min',c:'chip-time'},{l:'₩35,000–50,000',c:'chip-cost'}]},
+         ],
+         taxiFare:'₩35,000–50,000', taxiTime:'35–50 min',
+         destKo:'KSPO DOME, 서울 송파구 올림픽로 424',
+         destEn:'KSPO DOME, 424 Olympic-ro, Songpa-gu, Seoul',
+         toll:'No toll',
+         uberDest:'KSPO+DOME+424+Olympic-ro+Songpa+Seoul',
+        },
+      ],
+    },
+  },
+  {
+    id:'PUS', name:'Gimhae Intl', code:'PUS',
+    lat:35.1795, lng:128.9384,
+    concertRoutes:{
+      bts:[
+        {mode:'🚇', label:'Bus 58 + Subway to Asiad',
+         steps:[
+           {m:'🚌',t:'Airport Bus 58 or Limousine',s:'To Seomyeon / city center',chips:[{l:'30 min',c:'chip-time'},{l:'₩1,500~',c:'chip-cost'},{l:'Recommended',c:'chip-rec'}]},
+           {m:'🚇',t:'Subway Line 2 → Asiad Stadium',s:'Asiadrugby Stn, Exit 3',chips:[{l:'15 min',c:'chip-time'},{l:'₩1,450',c:'chip-cost'}]},
+         ],
+         taxiFare:'₩20,000–28,000', taxiTime:'25–35 min',
+         destKo:'부산 아시아드주경기장, 부산 연제구 아시아드대로 206',
+         destEn:'Busan Asiad Main Stadium, 206 Asiad-daero, Yeonje-gu, Busan',
+         toll:'No toll',
+         uberDest:'Busan+Asiad+Main+Stadium+Busan',
+        },
+        {mode:'🚗', label:'Taxi / Uber direct',
+         steps:[
+           {m:'🚗',t:'Taxi or Uber from Gimhae',s:'Fastest option from airport',chips:[{l:'25–35 min',c:'chip-time'},{l:'₩20,000–28,000',c:'chip-cost'},{l:'Fastest',c:'chip-rec'}]},
+         ],
+         taxiFare:'₩20,000–28,000', taxiTime:'25–35 min',
+         destKo:'부산 아시아드주경기장, 부산 연제구 아시아드대로 206',
+         destEn:'Busan Asiad Main Stadium, 206 Asiad-daero, Yeonje-gu, Busan',
+         toll:'No toll',
+         uberDest:'Busan+Asiad+Main+Stadium+Busan',
+        },
+      ],
+      xia:[
+        {mode:'✈️', label:'Fly PUS → GMP + Metro',
+         steps:[
+           {m:'✈️',t:'Fly Gimhae → Gimpo (GMP)',s:'~55 min flight',chips:[{l:'55 min',c:'chip-time'},{l:'₩40,000~',c:'chip-cost'}]},
+           {m:'🚇',t:'GMP → Olympic Park Stn',s:'Line 5 direct',chips:[{l:'55 min',c:'chip-time'},{l:'₩1,950',c:'chip-cost'},{l:'Recommended',c:'chip-rec'}]},
+         ],
+         taxiFare:'₩35,000–50,000', taxiTime:'(from Gimpo)',
+         destKo:'KSPO DOME, 서울 송파구 올림픽로 424',
+         destEn:'KSPO DOME, 424 Olympic-ro, Songpa-gu, Seoul',
+         toll:'No toll',
+         uberDest:'KSPO+DOME+424+Olympic-ro+Songpa+Seoul',
+        },
+      ],
+    },
+  },
+];
+
+// Nearby venues per concert
+const NEARBY_VENUES = {
+  bts:[
+    {name:'Busan Asiad Main Stadium',ko:'아시아드주경기장',lat:35.2094,lng:129.0728,type:'concert',cap:'50,000'},
+    {name:'BEXCO',ko:'벡스코',lat:35.1695,lng:129.1360,type:'venue',cap:'10,000'},
+    {name:'Busan Cultural Center',ko:'부산문화회관',lat:35.1550,lng:129.0611,type:'venue',cap:'2,000'},
+    {name:'KBS Arena Busan',ko:'KBS 부산홀',lat:35.1588,lng:129.0603,type:'venue',cap:'1,200'},
+  ],
+  xia:[
+    {name:'KSPO DOME',ko:'KSPO 돔',lat:37.5196,lng:127.1225,type:'concert',cap:'15,000'},
+    {name:'Olympic Hall',ko:'올림픽홀',lat:35.5187,lng:127.1162,type:'venue',cap:'4,000'},
+    {name:'BlueSquare',ko:'블루스퀘어',lat:37.5379,lng:127.0012,type:'venue',cap:'5,200'},
+    {name:'Inspire Arena',ko:'인스파이어 아레나',lat:37.4891,lng:126.4552,type:'venue',cap:'18,000'},
+  ],
+};
+
+const SAMPLE_MEETUPS = [
+  {id:1,concert:'bts',name:'ARMY Busan gathering 💜',time:'16:00',lat:35.2105,lng:129.0735,langs:['🇺🇸 EN','🇰🇷 KR','🇯🇵 JP'],note:'Exit 2, purple lightsticks!',members:38,joined:false},
+  {id:2,concert:'bts',name:'International ARMY meet 🌍',time:'15:30',lat:35.2080,lng:129.0720,langs:['🇺🇸 EN','🇹🇭 TH','🇵🇭 PH'],note:'Bring fan boards',members:24,joined:false},
+  {id:3,concert:'xia',name:'XIA GRAVITY fan zone ❤️',time:'17:00',lat:37.5205,lng:127.1215,langs:['🇺🇸 EN','🇰🇷 KR'],note:'KSPO DOME Gate A',members:19,joined:false},
+  {id:4,concert:'xia',name:'Coconut members meetup 🥥',time:'16:30',lat:37.5188,lng:127.1240,langs:['🇰🇷 KR','🇯🇵 JP','🇨🇳 CN'],note:'Fan café zone near entrance',members:31,joined:false},
+];
+
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
+let map;
+let currentConcert = 'bts';
+let currentAirport = 'ICN';
+let currentTab = 'routes';
+let showHeatmap = false;
+let showRoutes = true;
+let meetups = [...SAMPLE_MEETUPS];
+let muIdSeq = 100;
+let pickMode = false;
+let pendingLoc = null;
+let routeLines = [];
+let venueMarkers = [];
+let airportMarkerObjs = [];
+let meetupMarkerObjs = [];
+let myHotel = null;
+let hotelMarker = null;
+
+// ══════════════════════════════════════════════════════
+// HOTEL ZONES DATA
+// ══════════════════════════════════════════════════════
+const HOTEL_ZONES = {
+  seoul:[
+    {id:'hongdae',  name:'Hongdae / Sinchon',      name_ko:'홍대·신촌',         emoji:'🎸', lat:37.5563,lng:126.9224, desc:'Most popular for K-pop fans',
+     toVenue:{xia:{steps:[{m:'🚇',t:'Hongik Univ. → Olympic Park Stn',s:'Line 2 → Line 5, 1 transfer',chips:[{l:'45 min',c:'chip-time'},{l:'₩1,750',c:'chip-cost'},{l:'Recommended',c:'chip-rec'}]},{m:'🚶',t:'Exit 3 → KSPO DOME',s:'8 min walk',chips:[{l:'8 min',c:'chip-time'}]}],taxiFare:'₩28,000–38,000',taxiTime:'30–45 min',destEn:'KSPO DOME, 424 Olympic-ro, Songpa-gu, Seoul',destKo:'KSPO DOME, 서울 송파구 올림픽로 424',uberDest:'KSPO+DOME+424+Olympic-ro+Songpa+Seoul'},bts:null}},
+    {id:'myeongdong',name:'Myeongdong / City Hall', name_ko:'명동·시청',         emoji:'🛍', lat:37.5636,lng:126.9826, desc:'Shopping hub, many tourist hotels',
+     toVenue:{xia:{steps:[{m:'🚇',t:'Myeongdong → Olympic Park Stn',s:'Line 4 → 2 → 5, ~50 min',chips:[{l:'50 min',c:'chip-time'},{l:'₩1,750',c:'chip-cost'}]},{m:'🚶',t:'Exit 3 → KSPO DOME',s:'8 min walk',chips:[{l:'8 min',c:'chip-time'}]}],taxiFare:'₩30,000–42,000',taxiTime:'35–50 min',destEn:'KSPO DOME, 424 Olympic-ro, Songpa-gu, Seoul',destKo:'KSPO DOME, 서울 송파구 올림픽로 424',uberDest:'KSPO+DOME+424+Olympic-ro+Songpa+Seoul'},bts:null}},
+    {id:'gangnam',  name:'Gangnam / Coex',           name_ko:'강남·코엑스',       emoji:'🏙', lat:37.5172,lng:127.0473, desc:'Upscale area, close to KSPO DOME',
+     toVenue:{xia:{steps:[{m:'🚇',t:'Samseong → Olympic Park Stn',s:'Line 2, direct ~15 min',chips:[{l:'15 min',c:'chip-time'},{l:'₩1,550',c:'chip-cost'},{l:'Closest!',c:'chip-rec'}]},{m:'🚶',t:'Exit 3 → KSPO DOME',s:'8 min walk',chips:[{l:'8 min',c:'chip-time'}]}],taxiFare:'₩12,000–18,000',taxiTime:'15–20 min',destEn:'KSPO DOME, 424 Olympic-ro, Songpa-gu, Seoul',destKo:'KSPO DOME, 서울 송파구 올림픽로 424',uberDest:'KSPO+DOME+424+Olympic-ro+Songpa+Seoul'},bts:null}},
+    {id:'itaewon',  name:'Itaewon / Hannam',         name_ko:'이태원·한남',       emoji:'🌍', lat:37.5348,lng:126.9944, desc:'International vibe, diverse food',
+     toVenue:{xia:{steps:[{m:'🚇',t:'Itaewon → Olympic Park Stn',s:'Line 6 → Line 5, ~40 min',chips:[{l:'40 min',c:'chip-time'},{l:'₩1,750',c:'chip-cost'}]},{m:'🚶',t:'Exit 3 → KSPO DOME',s:'8 min walk',chips:[{l:'8 min',c:'chip-time'}]}],taxiFare:'₩22,000–32,000',taxiTime:'25–35 min',destEn:'KSPO DOME, 424 Olympic-ro, Songpa-gu, Seoul',destKo:'KSPO DOME, 서울 송파구 올림픽로 424',uberDest:'KSPO+DOME+424+Olympic-ro+Songpa+Seoul'},bts:null}},
+    {id:'jamsil',   name:'Jamsil / Olympic Park',    name_ko:'잠실·올림픽공원',   emoji:'🏟', lat:37.5131,lng:127.1001, desc:'Walking distance to KSPO DOME!',
+     toVenue:{xia:{steps:[{m:'🚶',t:'Walk / short taxi to KSPO DOME',s:'Right next to Olympic Park',chips:[{l:'10–20 min',c:'chip-time'},{l:'Walk/₩5,000',c:'chip-cost'},{l:'Best location!',c:'chip-rec'}]}],taxiFare:'₩5,000–10,000',taxiTime:'10–15 min',destEn:'KSPO DOME, 424 Olympic-ro, Songpa-gu, Seoul',destKo:'KSPO DOME, 서울 송파구 올림픽로 424',uberDest:'KSPO+DOME+424+Olympic-ro+Songpa+Seoul'},bts:null}},
+  ],
+  busan:[
+    {id:'haeundae', name:'Haeundae Beach',            name_ko:'해운대',            emoji:'🏖', lat:35.1628,lng:129.1635, desc:'Famous beach, popular with tourists',
+     toVenue:{bts:{steps:[{m:'🚇',t:'Haeundae → Asiad Stadium',s:'Line 2, ~30 min',chips:[{l:'30 min',c:'chip-time'},{l:'₩1,500',c:'chip-cost'},{l:'Recommended',c:'chip-rec'}]}],taxiFare:'₩22,000–30,000',taxiTime:'25–35 min',destEn:'Busan Asiad Main Stadium, 206 Asiad-daero, Yeonje-gu, Busan',destKo:'부산 아시아드주경기장, 부산 연제구 아시아드대로 206',uberDest:'Busan+Asiad+Main+Stadium+Busan'},xia:null}},
+    {id:'seomyeon', name:'Seomyeon / City Center',    name_ko:'서면·시내',         emoji:'🏙', lat:35.1579,lng:129.0597, desc:'Central hub, best transport links',
+     toVenue:{bts:{steps:[{m:'🚇',t:'Seomyeon → Asiad Stadium',s:'Line 2, direct ~10 min',chips:[{l:'10 min',c:'chip-time'},{l:'₩1,450',c:'chip-cost'},{l:'Closest!',c:'chip-rec'}]}],taxiFare:'₩8,000–12,000',taxiTime:'10–15 min',destEn:'Busan Asiad Main Stadium, 206 Asiad-daero, Yeonje-gu, Busan',destKo:'부산 아시아드주경기장, 부산 연제구 아시아드대로 206',uberDest:'Busan+Asiad+Main+Stadium+Busan'},xia:null}},
+    {id:'gwangalli',name:'Gwangalli Beach',            name_ko:'광안리',            emoji:'🌉', lat:35.1533,lng:129.1185, desc:'Trendy beach with bridge views',
+     toVenue:{bts:{steps:[{m:'🚇',t:'Gwangan → Asiad Stadium',s:'Line 2, ~20 min',chips:[{l:'20 min',c:'chip-time'},{l:'₩1,500',c:'chip-cost'}]}],taxiFare:'₩15,000–22,000',taxiTime:'20–28 min',destEn:'Busan Asiad Main Stadium, 206 Asiad-daero, Yeonje-gu, Busan',destKo:'부산 아시아드주경기장, 부산 연제구 아시아드대로 206',uberDest:'Busan+Asiad+Main+Stadium+Busan'},xia:null}},
+  ],
+};
+
+const AIRPORT_TO_HOTEL = {
+  ICN:{
+    hongdae:   {steps:[{m:'🚇',t:'AREX Express → Hongik Univ. Stn',s:'Direct from T1, 66 min',chips:[{l:'66 min',c:'chip-time'},{l:'₩9,500',c:'chip-cost'},{l:'Recommended',c:'chip-rec'}]}],taxiFare:'₩55,000–70,000',taxiTime:'50–65 min'},
+    myeongdong:{steps:[{m:'🚇',t:'AREX Express → Seoul Stn → Line 4',s:'43 min + 10 min transfer',chips:[{l:'55 min',c:'chip-time'},{l:'₩11,000',c:'chip-cost'},{l:'Recommended',c:'chip-rec'}]}],taxiFare:'₩60,000–75,000',taxiTime:'55–70 min'},
+    gangnam:   {steps:[{m:'🚌',t:'Airport Limousine Bus 6001',s:'T1 5B → Gangnam, ~70 min',chips:[{l:'70 min',c:'chip-time'},{l:'₩17,000',c:'chip-cost'},{l:'Direct bus',c:'chip-rec'}]}],taxiFare:'₩70,000–85,000',taxiTime:'60–75 min'},
+    itaewon:   {steps:[{m:'🚇',t:'AREX → Seoul Stn → Line 4 → Line 6',s:'~75 min total',chips:[{l:'75 min',c:'chip-time'},{l:'₩11,000',c:'chip-cost'}]}],taxiFare:'₩65,000–80,000',taxiTime:'60–75 min'},
+    jamsil:    {steps:[{m:'🚇',t:'AREX → Seoul Stn → Line 2 → Jamsil',s:'~85 min total',chips:[{l:'85 min',c:'chip-time'},{l:'₩11,800',c:'chip-cost'}]}],taxiFare:'₩75,000–90,000',taxiTime:'65–80 min'},
+  },
+  GMP:{
+    hongdae:   {steps:[{m:'🚇',t:'Line 9 → Line 2 → Hongik Univ.',s:'~35 min',chips:[{l:'35 min',c:'chip-time'},{l:'₩1,750',c:'chip-cost'},{l:'Recommended',c:'chip-rec'}]}],taxiFare:'₩22,000–30,000',taxiTime:'25–35 min'},
+    myeongdong:{steps:[{m:'🚇',t:'Line 5 → transfer → Myeongdong',s:'~50 min',chips:[{l:'50 min',c:'chip-time'},{l:'₩1,950',c:'chip-cost'}]}],taxiFare:'₩28,000–38,000',taxiTime:'30–40 min'},
+    gangnam:   {steps:[{m:'🚇',t:'Line 9 Express → Express Terminal',s:'~30 min',chips:[{l:'30 min',c:'chip-time'},{l:'₩1,750',c:'chip-cost'},{l:'Recommended',c:'chip-rec'}]}],taxiFare:'₩28,000–38,000',taxiTime:'30–40 min'},
+    itaewon:   {steps:[{m:'🚇',t:'Line 9 → Line 1 → Itaewon',s:'~40 min',chips:[{l:'40 min',c:'chip-time'},{l:'₩1,750',c:'chip-cost'}]}],taxiFare:'₩22,000–30,000',taxiTime:'25–35 min'},
+    jamsil:    {steps:[{m:'🚇',t:'Line 5 direct → Olympic Park area',s:'~55 min',chips:[{l:'55 min',c:'chip-time'},{l:'₩1,950',c:'chip-cost'}]}],taxiFare:'₩32,000–42,000',taxiTime:'35–48 min'},
+  },
+  PUS:{
+    haeundae:  {steps:[{m:'🚗',t:'Taxi direct to Haeundae',s:'~40 min via coastal road',chips:[{l:'40 min',c:'chip-time'},{l:'₩28,000~',c:'chip-cost'},{l:'Easiest',c:'chip-rec'}]}],taxiFare:'₩25,000–35,000',taxiTime:'35–45 min'},
+    seomyeon:  {steps:[{m:'🚌',t:'Airport Bus 58 → Seomyeon',s:'~35 min direct',chips:[{l:'35 min',c:'chip-time'},{l:'₩1,500',c:'chip-cost'},{l:'Recommended',c:'chip-rec'}]}],taxiFare:'₩18,000–25,000',taxiTime:'25–35 min'},
+    gwangalli: {steps:[{m:'🚌',t:'Airport Bus → Seomyeon → Line 2 → Gwangan',s:'~50 min',chips:[{l:'50 min',c:'chip-time'},{l:'₩3,000',c:'chip-cost'}]}],taxiFare:'₩22,000–30,000',taxiTime:'30–40 min'},
+  },
+};
+
+// ══════════════════════════════════════════════════════
+// MAP INIT
+// ══════════════════════════════════════════════════════
+function initMap() {
+  // Start centered between Seoul and Busan
+  map = L.map('map', {
+    center: [36.8, 127.5], zoom: 8,
+    zoomControl: false, attributionControl: true,
+  });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors', maxZoom: 19,
+  }).addTo(map);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  map.on('click', e => {
+    if (pickMode) {
+      pendingLoc = e.latlng;
+      document.getElementById('modal-loc-hint').textContent =
+        `📌 Set: ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+      document.getElementById('pick-hint').style.display = 'none';
+      document.getElementById('modal-overlay').classList.add('open');
+      pickMode = false;
+      map.getContainer().style.cursor = '';
+      showToast('📌 Location set!');
+    }
+  });
+
+  map.on('moveend zoomend', () => {
+    if (showHeatmap) drawHeatmap();
+  });
+  window.addEventListener('resize', () => {
+    if (showHeatmap) drawHeatmap();
+  });
+
+  buildAirportTabs();
+  renderAirportMarkers();
+  renderVenueMarkers();
+  renderMeetupMarkers();
+  renderContent();
+  drawRouteLines();
+
+  // Event delegation — transport buttons (js-uber / js-kakao / js-gmaps)
+  document.getElementById('sheet-body').addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const lat  = parseFloat(btn.dataset.lat);
+    const lng  = parseFloat(btn.dataset.lng);
+    const name = btn.dataset.name;
+    const from = btn.dataset.from;
+    if (!lat || !lng || !name) return;
+    if (btn.classList.contains('js-uber'))  { openUber(lat, lng, name, from); return; }
+    if (btn.classList.contains('js-kakao')) { openKakao(lat, lng, name, from); return; }
+    if (btn.classList.contains('js-gmaps')) { openGoogleMaps(lat, lng, name, from); return; }
+  });
+
+  // Show onboarding on first load
+  showOnboarding();
+
+  setTimeout(() => showToast('✈️ Welcome to Odiroga!'), 800);
+}
+
+// ══════════════════════════════════════════════════════
+// PANEL TOGGLE
+// ══════════════════════════════════════════════════════
+function togglePanel() {
+  const sheet = document.getElementById('sheet');
+  const handle = document.getElementById('sheet-handle');
+  if (sheet.classList.contains('open')) {
+    sheet.classList.remove('open');
+    sheet.classList.add('hidden');
+    handle.textContent = '▶';
+  } else {
+    sheet.classList.remove('hidden');
+    sheet.classList.add('open');
+    handle.textContent = '◀';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// CONCERT SELECTION
+// ══════════════════════════════════════════════════════
+function selectConcert(id) {
+  currentConcert = id;
+  const c = CONCERTS[id];
+  // pills
+  document.getElementById('pill-bts').className = 'concert-pill' + (id==='bts'?' active-bts':'');
+  document.getElementById('pill-xia').className = 'concert-pill' + (id==='xia'?' active-xia':'');
+  // reset airport to first available
+  const ap = AIRPORTS.find(a => a.concertRoutes[id]);
+  if (ap) { currentAirport = ap.id; buildAirportTabs(); }
+  renderContent();
+  drawRouteLines();
+  renderVenueMarkers();
+  // fly to area
+  map.flyTo([c.lat, c.lng], 11, { duration: 1.2 });
+  // open panel if hidden
+  const sheet = document.getElementById('sheet');
+  if (sheet.classList.contains('hidden')) togglePanel();
+  showToast(`${c.emoji} ${c.name} selected`);
+}
+
+// ══════════════════════════════════════════════════════
+// AIRPORT TABS
+// ══════════════════════════════════════════════════════
+function buildAirportTabs() {
+  const el = document.getElementById('airport-tabs');
+  el.innerHTML = '';
+  AIRPORTS.forEach(ap => {
+    const hasRoutes = !!(ap.concertRoutes[currentConcert]?.length);
+    if (!hasRoutes) return;
+    const div = document.createElement('div');
+    div.className = 'ap-tab' + (ap.id === currentAirport ? ' active' : '');
+    div.innerHTML = `<div class="ap-code">${ap.code}</div><div class="ap-name">${ap.name}</div>`;
+    div.onclick = () => { currentAirport = ap.id; buildAirportTabs(); renderContent(); drawRouteLines(); };
+    el.appendChild(div);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════════════
+function switchTab(t) {
+  currentTab = t;
+  document.getElementById('tab-routes').className = 'tab-item' + (t==='routes'?' active':'');
+  document.getElementById('tab-meetups').className = 'tab-item' + (t==='meetups'?' active':'');
+  renderContent();
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER CONTENT
+// ══════════════════════════════════════════════════════
+function renderContent() {
+  const el = document.getElementById('sheet-body');
+  if (currentTab === 'routes') {
+    el.innerHTML = '';
+    const ap = AIRPORTS.find(a => a.id === currentAirport);
+    const routes = ap?.concertRoutes[currentConcert] || [];
+    const c = CONCERTS[currentConcert];
+
+    // Journey comparison (hotel set)
+    if (myHotel) {
+      renderJourneyCompare(el);
+      const div = document.createElement('div');
+      div.style.cssText = 'height:1px;background:var(--gray-100);margin:4px 0 8px';
+      el.appendChild(div);
+    }
+
+    // Standard airport→venue routes
+    const sec = document.createElement('div');
+    sec.className = 'sec-title';
+    sec.textContent = myHotel ? `All Routes: ${ap?.code || ''} → ${c.venue}` : `${ap?.code || ''} → ${c.venue}`;
+    el.appendChild(sec);
+
+    routes.forEach((r, i) => renderRouteCard(el, r, i, c));
+
+    // Nearby venues
+    const nv = NEARBY_VENUES[currentConcert] || [];
+    if (nv.length) {
+      const s2 = document.createElement('div');
+      s2.className = 'sec-title';
+      s2.textContent = 'Nearby Venues';
+      el.appendChild(s2);
+      nv.forEach(v => {
+        const d = document.createElement('div');
+        d.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--gray-50);border-radius:var(--radius-sm);margin-bottom:7px;cursor:pointer';
+        d.innerHTML = `<span style="font-size:18px">${v.type==='concert'?'🏟':'🎤'}</span>
+          <div style="flex:1"><div style="font-weight:600;font-size:12px">${v.name}</div>
+          <div style="font-size:10px;color:var(--gray-400)">${v.ko} · cap. ${v.cap}</div></div>
+          <span style="font-size:9px;color:var(--gray-400)">→</span>`;
+        d.onclick = () => map.flyTo([v.lat, v.lng], 15, { duration: 1 });
+        el.appendChild(d);
+      });
+    }
+  } else {
+    // MEETUPS
+    el.innerHTML = '';
+    const btn = document.createElement('button');
+    btn.id = 'create-btn';
+    btn.innerHTML = '＋ Create Meet-up';
+    btn.onclick = startCreateMeetup;
+    el.appendChild(btn);
+
+    const filtered = meetups.filter(m => m.concert === currentConcert);
+    const sec = document.createElement('div');
+    sec.className = 'sec-title';
+    sec.textContent = `Meet-ups (${filtered.length})`;
+    el.appendChild(sec);
+
+    if (!filtered.length) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = 'No meet-ups yet — create the first one! 🎉';
+      el.appendChild(empty);
+    } else {
+      filtered.forEach(m => renderMeetupCard(el, m));
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// ROUTE CARD
+// ══════════════════════════════════════════════════════
+function renderRouteCard(parent, r, idx, c) {
+  const card = document.createElement('div');
+  card.className = 'route-card';
+
+  const badge = idx === 0 ? '<span class="rc-badge badge-green">Top route</span>' : '';
+
+  card.innerHTML = `
+    <div class="rc-head">
+      <div class="rc-icon">${r.mode}</div>
+      <div style="flex:1">
+        <div class="rc-title">${r.label}</div>
+        <div class="rc-subtitle">${r.steps.length} step${r.steps.length>1?'s':''}</div>
+      </div>
+      ${badge}
+    </div>
+    <div class="rc-steps">
+      ${r.steps.map(s => `
+        <div class="step-row">
+          <div class="step-mode">${s.m}</div>
+          <div class="step-body">
+            <div class="step-main">${s.t}</div>
+            <div class="step-sub">${s.s}</div>
+            <div class="step-chips">
+              ${s.chips.map(ch => `<span class="chip ${ch.c}">${ch.l}</span>`).join('')}
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="taxi-bar">
+      <strong>🚖 Taxi fare: ${r.taxiFare}</strong> · ${r.taxiTime}<br>
+      <small>${r.toll}</small>
+      <div class="taxi-dest">
+        <div class="dest-row"><span class="dest-label">KO</span><span class="dest-val">${r.destKo}</span></div>
+        <div class="dest-row" style="margin-top:3px"><span class="dest-label">EN</span><span class="dest-val">${r.destEn}</span></div>
+      </div>
+    </div>
+    <div class="rc-footer">
+      <button class="action-btn btn-uber   js-uber"   data-lat="${c.lat}" data-lng="${c.lng}" data-name="${c.venue}"   data-from="airport">⬛ Uber</button>
+      <button class="action-btn btn-kakao  js-kakao"  data-lat="${c.lat}" data-lng="${c.lng}" data-name="${c.venueKo}" data-from="airport">🟡 KakaoT</button>
+      <button class="action-btn btn-google js-gmaps"  data-lat="${c.lat}" data-lng="${c.lng}" data-name="${c.venue}"   data-from="airport">🗺 Maps</button>
+    </div>`;
+  parent.appendChild(card);
+}
+
+// ══════════════════════════════════════════════════════
+// MEETUP CARD
+// ══════════════════════════════════════════════════════
+function renderMeetupCard(parent, m) {
+  const c = CONCERTS[m.concert];
+  const card = document.createElement('div');
+  card.className = 'meetup-card' + (m.joined ? ' joined' : '');
+  card.innerHTML = `
+    <div class="mc-left-bar" style="background:${c.color}"></div>
+    <div class="mc-top">
+      <span class="mc-fandom" style="background:${c.color}18;color:${c.color}">${c.emoji} ${c.fandom}</span>
+      <span class="mc-name">${m.name}</span>
+    </div>
+    <div class="mc-meta">
+      <span>🕐 ${m.time}</span>
+      <span>🌐 ${m.langs.slice(0,3).join(' ')}</span>
+      <span class="mc-count">👥 ${m.members}</span>
+    </div>
+    ${m.note ? `<div style="font-size:10px;color:var(--gray-500);margin-top:5px;font-style:italic">💬 ${m.note}</div>` : ''}
+    <button class="mc-join ${m.joined ? 'joined' : 'join-'+m.concert}"
+      onclick="event.stopPropagation();joinMeetup(${m.id})">
+      ${m.joined ? '✓ Joined' : 'Join Meet-up →'}
+    </button>`;
+  card.onclick = () => {
+    map.flyTo([m.lat, m.lng], 17, { duration: 1 });
+  };
+  parent.appendChild(card);
+}
+
+// ══════════════════════════════════════════════════════
+// JOIN MEETUP
+// ══════════════════════════════════════════════════════
+function joinMeetup(id) {
+  const m = meetups.find(x => x.id === id);
+  if (!m || m.joined) return;
+  m.joined = true; m.members++;
+  renderContent();
+  showToast(`${CONCERTS[m.concert].emoji} Joined "${m.name}"!`);
+}
+
+// ══════════════════════════════════════════════════════
+// MAP MARKERS
+// ══════════════════════════════════════════════════════
+function renderAirportMarkers() {
+  AIRPORTS.forEach(ap => {
+    const html = `<div class="airport-label" id="aplabel-${ap.id}">✈️ ${ap.code}</div>`;
+    const icon = L.divIcon({ html, className: '', iconSize: [80, 28], iconAnchor: [40, 14] });
+    const m = L.marker([ap.lat, ap.lng], { icon }).addTo(map);
+    m.on('click', () => {
+      if (ap.concertRoutes[currentConcert]?.length) {
+        currentAirport = ap.id;
+        buildAirportTabs();
+        renderContent();
+        drawRouteLines();
+        showToast(`✈️ ${ap.name} selected`);
+        // open panel if hidden
+        const sheet = document.getElementById('sheet');
+        if (sheet.classList.contains('hidden')) togglePanel();
+        // highlight
+        document.querySelectorAll('.airport-label').forEach(el => el.classList.remove('selected'));
+        document.getElementById('aplabel-' + ap.id)?.classList.add('selected');
+      }
+    });
+    airportMarkerObjs.push({ ap, marker: m });
+  });
+}
+
+function renderVenueMarkers() {
+  venueMarkers.forEach(m => map.removeLayer(m));
+  venueMarkers = [];
+  Object.values(CONCERTS).forEach(c => {
+    const isCurrent = c.id === currentConcert;
+    const html = `<div class="venue-label ${c.id === 'bts' ? 'bts-venue' : 'xia-venue'}" style="opacity:${isCurrent?1:.4}">${c.emoji} ${c.venue}</div>`;
+    const icon = L.divIcon({ html, className: '', iconSize: [160, 28], iconAnchor: [80, 14] });
+    const m = L.marker([c.lat, c.lng], { icon }).addTo(map);
+    m.on('click', () => {
+      selectConcert(c.id);
+    });
+    venueMarkers.push(m);
+  });
+
+  // nearby
+  const nv = NEARBY_VENUES[currentConcert] || [];
+  nv.forEach(v => {
+    const html = `<div style="background:white;border:1px solid #e0e0e0;border-radius:6px;padding:2px 6px;font-size:9px;font-weight:600;color:var(--gray-600);white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.08)">${v.type==='concert'?'🏟':'🎤'} ${v.name}</div>`;
+    const icon = L.divIcon({ html, className: '', iconSize: [140, 22], iconAnchor: [70, 11] });
+    const m = L.marker([v.lat, v.lng], { icon }).addTo(map);
+    m.on('click', () => map.flyTo([v.lat, v.lng], 15));
+    venueMarkers.push(m);
+  });
+}
+
+function renderMeetupMarkers() {
+  meetupMarkerObjs.forEach(m => map.removeLayer(m.marker));
+  meetupMarkerObjs = [];
+  meetups.forEach(mu => {
+    const c = CONCERTS[mu.concert];
+    const html = `<div class="mu-pin">
+      <div class="mu-pin-body" style="background:${c.color}dd"><span class="mu-pin-emoji">${c.emoji}</span></div>
+      <div class="mu-pin-tag" style="color:${c.color}">${mu.members}</div>
+    </div>`;
+    const icon = L.divIcon({ html, className: '', iconSize: [40, 42], iconAnchor: [20, 40] });
+    const m = L.marker([mu.lat, mu.lng], { icon, zIndexOffset: 200 }).addTo(map);
+    m.on('click', () => showMeetupPopup(mu, m));
+    meetupMarkerObjs.push({ mu, marker: m });
+  });
+}
+
+function showMeetupPopup(mu, marker) {
+  const c = CONCERTS[mu.concert];
+  const html = `<div class="pu-inner">
+    <div class="pu-top">
+      <span class="pu-badge" style="background:${c.color}18;color:${c.color}">${c.emoji} ${c.fandom}</span>
+    </div>
+    <div class="pu-name">${mu.name}</div>
+    <div class="pu-row" style="margin-top:6px">🕐 ${mu.time} · 👥 ${mu.members} fans</div>
+    <div class="pu-row">🌐 ${mu.langs.join(' ')}</div>
+    ${mu.note ? `<div class="pu-row" style="color:var(--gray-600);font-style:italic">💬 ${mu.note}</div>` : ''}
+    <button class="pu-btn ${mu.joined ? '' : 'join-'+mu.concert}"
+      style="background:${mu.joined?'var(--gray-50)':c.color};color:${mu.joined?'var(--gray-400)':'white'};border:${mu.joined?'1.5px solid var(--gray-200)':'none'}"
+      onclick="joinMeetup(${mu.id})">
+      ${mu.joined ? '✓ Joined' : 'Join →'}
+    </button>
+  </div>`;
+  marker.bindPopup(html, { maxWidth: 220, closeButton: true }).openPopup();
+}
+
+// ══════════════════════════════════════════════════════
+// ROUTE LINES
+// ══════════════════════════════════════════════════════
+function drawRouteLines() {
+  routeLines.forEach(l => map.removeLayer(l));
+  routeLines = [];
+  if (!showRoutes) return;
+
+  const ap = AIRPORTS.find(a => a.id === currentAirport);
+  if (!ap) return;
+  const c = CONCERTS[currentConcert];
+  const routes = ap.concertRoutes[currentConcert] || [];
+
+  routes.forEach((r, i) => {
+    const line = L.polyline([[ap.lat, ap.lng], [c.lat, c.lng]], {
+      color: c.color,
+      weight: i === 0 ? 3 : 1.5,
+      opacity: i === 0 ? 0.7 : 0.3,
+      dashArray: i === 0 ? null : '8,6',
+    }).addTo(map);
+    line.on('click', () => {
+      const sheet = document.getElementById('sheet');
+      if (sheet.classList.contains('hidden')) togglePanel();
+      currentTab = 'routes';
+      switchTab('routes');
+    });
+    routeLines.push(line);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// HEATMAP
+// ══════════════════════════════════════════════════════
+function toggleHeatmap() {
+  showHeatmap = !showHeatmap;
+  document.getElementById('btn-heatmap').classList.toggle('active', showHeatmap);
+  const canvas = document.getElementById('hmap');
+  canvas.classList.toggle('on', showHeatmap);
+  if (showHeatmap) drawHeatmap();
+  else {
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+function drawHeatmap() {
+  const canvas = document.getElementById('hmap');
+  const W = window.innerWidth, H = window.innerHeight;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  // collect heat points: venues + meetups
+  const pts = [];
+  Object.values(CONCERTS).forEach(c => {
+    const px = map.latLngToContainerPoint([c.lat, c.lng]);
+    for (let i = 0; i < 80; i++) {
+      const r = (Math.random() ** 1.5) * 0.012, a = Math.random() * Math.PI * 2;
+      const pp = map.latLngToContainerPoint([c.lat + Math.cos(a)*r, c.lng + Math.sin(a)*r*1.2]);
+      pts.push({ x: pp.x, y: pp.y, w: .3 + Math.random() * .7, r: 40 });
+    }
+    pts.push({ x: px.x, y: px.y, w: 1, r: 60 });
+  });
+  meetups.forEach(m => {
+    const px = map.latLngToContainerPoint([m.lat, m.lng]);
+    pts.push({ x: px.x, y: px.y, w: m.members / 40, r: 50 });
+  });
+
+  const oc = document.createElement('canvas');
+  oc.width = W; oc.height = H;
+  const octx = oc.getContext('2d');
+  pts.forEach(p => {
+    const g = octx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+    g.addColorStop(0, `rgba(255,255,255,${Math.min(1, p.w)})`);
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    octx.fillStyle = g;
+    octx.beginPath(); octx.arc(p.x, p.y, p.r, 0, Math.PI * 2); octx.fill();
+  });
+
+  const id = octx.getImageData(0, 0, W, H), d = id.data;
+  const out = ctx.createImageData(W, H), od = out.data;
+  const pal = [
+    [255,235,59,0],[255,235,59,60],[255,152,0,130],[244,67,54,200],[156,39,176,240]
+  ];
+  function interp(t) {
+    t = Math.max(0, Math.min(1, t));
+    const idx = t * (pal.length - 1), lo = Math.floor(idx), hi = Math.min(pal.length-1, lo+1), f = idx-lo;
+    const a = pal[lo], b = pal[hi];
+    return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f, a[3]+(b[3]-a[3])*f];
+  }
+  for (let i = 0; i < d.length; i += 4) {
+    const v = d[i] / 255;
+    if (v < .01) { od[i]=od[i+1]=od[i+2]=od[i+3]=0; continue; }
+    const c = interp(v);
+    od[i]=c[0]; od[i+1]=c[1]; od[i+2]=c[2]; od[i+3]=c[3]*.65;
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
+// ══════════════════════════════════════════════════════
+// TOGGLE ROUTES
+// ══════════════════════════════════════════════════════
+function toggleRoutes() {
+  showRoutes = !showRoutes;
+  document.getElementById('btn-routes').classList.toggle('active', showRoutes);
+  drawRouteLines();
+}
+
+// ══════════════════════════════════════════════════════
+// CREATE MEETUP
+// ══════════════════════════════════════════════════════
+function startCreateMeetup() {
+  pendingLoc = null;
+  document.getElementById('mi-name').value = '';
+  document.getElementById('mi-note').value = '';
+  document.getElementById('mi-time').value = '17:00';
+  document.getElementById('mi-concert').value = currentConcert;
+  document.getElementById('modal-loc-hint').textContent = '📌 Tap the map to set your meeting location';
+  document.querySelectorAll('#mi-langs .sel-chip').forEach(c => {
+    c.classList.toggle('sel', ['🇺🇸 EN','🇰🇷 KR'].includes(c.dataset.l));
+    updateChipStyle(c);
+  });
+
+  // open panel if hidden
+  const sheet = document.getElementById('sheet');
+  if (sheet.classList.contains('hidden')) togglePanel();
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function confirmCreate() {
+  const name = document.getElementById('mi-name').value.trim();
+  const concert = document.getElementById('mi-concert').value;
+  if (!name) { showToast('⚠️ Please enter a name'); return; }
+  if (!pendingLoc) { showToast('⚠️ Tap the map to set location'); return; }
+  const langs = [...document.querySelectorAll('#mi-langs .sel-chip.sel')].map(c => c.dataset.l);
+  const m = {
+    id: ++muIdSeq, concert,
+    name, time: document.getElementById('mi-time').value,
+    lat: pendingLoc.lat, lng: pendingLoc.lng,
+    langs: langs.length ? langs : ['🇺🇸 EN'],
+    note: document.getElementById('mi-note').value.trim(),
+    members: 1, joined: true,
+  };
+  meetups.push(m);
+  renderMeetupMarkers();
+  closeModal();
+  currentConcert = concert;
+  currentTab = 'meetups';
+  switchTab('meetups');
+  map.flyTo([m.lat, m.lng], 16, { duration: 1 });
+  showToast(`🎉 Meet-up created!`);
+}
+
+function closeModal(e) {
+  if (e && e.target !== document.getElementById('modal-overlay')) return;
+  document.getElementById('modal-overlay').classList.remove('open');
+  pickMode = false;
+  document.getElementById('pick-hint').style.display = 'none';
+  map.getContainer().style.cursor = '';
+}
+
+// Build modal lang chip styles on init
+function updateChipStyle(chip) {
+  const concert = document.getElementById('mi-concert')?.value || 'bts';
+  const c = CONCERTS[concert];
+  if (chip.classList.contains('sel')) {
+    chip.style.background = c?.color || '#333';
+    chip.style.color = '#fff';
+    chip.style.borderColor = 'transparent';
+  } else {
+    chip.style.background = '';
+    chip.style.color = '';
+    chip.style.borderColor = '';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#mi-langs .sel-chip').forEach(c => {
+    c.onclick = () => {
+      c.classList.toggle('sel');
+      updateChipStyle(c);
+    };
+    updateChipStyle(c);
+  });
+  // Allow clicking map to set location while modal is open
+  document.getElementById('modal-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeModal(e);
+  });
+});
+
+// ══════════════════════════════════════════════════════
+// ACTIONS
+// ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// TAXI / MAP DEEPLINKS
+// ══════════════════════════════════════════════════════
+
+// Context: which "from" coordinates to use
+// fromContext: 'airport' | 'hotel' | null (= GPS)
+function getPickupCoords(fromContext) {
+  if (fromContext === 'airport') {
+    const ap = AIRPORTS.find(a => a.id === currentAirport);
+    return ap ? { lat: ap.lat, lng: ap.lng, name: ap.name } : null;
+  }
+  if (fromContext === 'hotel' && myHotel) {
+    return { lat: myHotel.lat, lng: myHotel.lng, name: myHotel.name };
+  }
+  return null; // fallback = current GPS
+}
+
+// Uber deeplink — full pickup + dropoff coordinates
+function openUber(dropLat, dropLng, dropName, fromContext) {
+  const pickup = getPickupCoords(fromContext);
+
+  // Uber 웹/앱 공통 deeplink
+  // www.uber.com 웹버전은 pickup coords + dropoff coords 모두 지원
+  const params = new URLSearchParams();
+  if (pickup) {
+    params.set('pickup[latitude]',          pickup.lat);
+    params.set('pickup[longitude]',         pickup.lng);
+    params.set('pickup[formatted_address]', pickup.name);
+  } else {
+    params.set('pickup', 'my_location');
+  }
+  params.set('dropoff[latitude]',          dropLat);
+  params.set('dropoff[longitude]',         dropLng);
+  params.set('dropoff[formatted_address]', dropName);
+
+  // 앱 설치시 → 앱으로 바로 이동
+  // 앱 없을시 → uber.com 웹 (픽업+도착지 자동 세팅)
+  const mobileUrl = `uber://?action=setPickup&${params.toString()}`;
+  const webUrl    = `https://m.uber.com/ul/?action=setPickup&${params.toString()}`;
+
+  const pickupNote = pickup ? pickup.name : 'current location';
+  showToast(`⬛ Uber: ${pickupNote} → ${dropName}`);
+
+  // 앱 딥링크 시도 → 300ms 후 앱 없으면 웹으로
+  const start = Date.now();
+  const fallback = setTimeout(() => {
+    if (Date.now() - start < 2000) window.open(webUrl, '_blank');
+  }, 300);
+  window.addEventListener('blur', () => clearTimeout(fallback), { once: true });
+
+  const a = document.createElement('a');
+  a.href = mobileUrl;
+  a.click();
+}
+
+// KakaoT deeplink — destination coords (pickup = GPS or current location)
+// KakaoT 외부 딥링크는 도착지만 지원, 출발지는 앱 내 현재위치 자동설정
+// kakaomap://route 로 카카오맵 앱 연동, 없으면 웹 fallback
+function openKakao(dropLat, dropLng, dropNameKo, fromContext) {
+  const pickup = getPickupCoords(fromContext);
+
+  let kakaoWebUrl;
+  if (pickup) {
+    // 카카오맵 길찾기 URL — 출발지(sp) + 도착지(ep) 좌표 모두 지정
+    // format: map.kakao.com/?map_type=...&target=car
+    //   &rt=%2C%2C[출발lng]%2C[출발lat]   (출발지 좌표)
+    //   &rt1=[출발지명]
+    //   &rt2=[도착지명]
+    //   &rtIds=%2C
+    //   &rtTypes=%2C
+    // 더 안정적인 방식: /link/from/[출발지명],[출발lat],[출발lng]/to/[도착지명],[도착lat],[도착lng]
+    kakaoWebUrl = `https://map.kakao.com/link/from/${encodeURIComponent(pickup.name)},${pickup.lat},${pickup.lng}/to/${encodeURIComponent(dropNameKo)},${dropLat},${dropLng}`;
+  } else {
+    // 출발지 없으면 도착지만 (현재위치 자동)
+    kakaoWebUrl = `https://map.kakao.com/link/to/${encodeURIComponent(dropNameKo)},${dropLat},${dropLng}`;
+  }
+
+  // 카카오맵 앱 딥링크 (출발+도착 좌표)
+  const kakaoAppUrl = pickup
+    ? `kakaomap://route?sp=${pickup.lng},${pickup.lat}&ep=${dropLng},${dropLat}&by=CAR`
+    : `kakaomap://route?ep=${dropLng},${dropLat}&by=CAR`;
+
+  const pickupNote = pickup ? `${pickup.name} → ` : '';
+  showToast(`🟡 KakaoMap: ${pickupNote}${dropNameKo}`);
+
+  // 앱 있으면 앱으로, 없으면 300ms 후 웹으로
+  const t = setTimeout(() => window.open(kakaoWebUrl, '_blank'), 300);
+  window.addEventListener('blur', () => clearTimeout(t), { once: true });
+  const a = document.createElement('a');
+  a.href = kakaoAppUrl;
+  a.click();
+}
+
+// Google Maps — 웹/앱 모두 출발지+도착지 완벽 지원
+function openGoogleMaps(dropLat, dropLng, dropName, fromContext) {
+  const pickup = getPickupCoords(fromContext);
+  let url;
+  if (pickup) {
+    // 출발지 좌표 → 도착지 좌표 경로
+    url = `https://www.google.com/maps/dir/${pickup.lat},${pickup.lng}/${dropLat},${dropLng}`;
+  } else {
+    // 현재 위치 → 도착지
+    url = `https://www.google.com/maps/dir/Current+Location/${dropLat},${dropLng}`;
+  }
+  const pickupNote = pickup ? pickup.name : 'current location';
+  showToast(`🗺 Google Maps: ${pickupNote} → ${dropName}`);
+  window.open(url, '_blank');
+}
+
+function copyAddr(addr) {
+  navigator.clipboard.writeText(addr)
+    .then(() => showToast('📋 Address copied! Show to driver'))
+    .catch(() => {
+      const el = document.createElement('textarea');
+      el.value = addr; document.body.appendChild(el); el.select();
+      document.execCommand('copy'); document.body.removeChild(el);
+      showToast('📋 Address copied!');
+    });
+}
+function recenter() {
+  map.flyTo([36.8, 127.5], 8, { duration: 1.2 });
+}
+
+// ══════════════════════════════════════════════════════
+// ONBOARDING
+// ══════════════════════════════════════════════════════
+let obSelectedZone = null;
+let obCity = 'seoul';
+
+function showOnboarding() {
+  document.getElementById('onboarding').style.display = 'flex';
+  renderObZones();
+}
+function openOnboarding() {
+  obSelectedZone = myHotel;
+  obCity = myHotel ? (HOTEL_ZONES.seoul.find(z=>z.id===myHotel.id) ? 'seoul' : 'busan') : 'seoul';
+  document.getElementById('ob-seoul').className = 'ob-city-tab' + (obCity==='seoul'?' active':'');
+  document.getElementById('ob-busan').className = 'ob-city-tab' + (obCity==='busan'?' active':'');
+  document.getElementById('onboarding').style.display = 'flex';
+  renderObZones();
+}
+function switchObCity(city) {
+  obCity = city;
+  obSelectedZone = null;
+  document.getElementById('ob-seoul').className = 'ob-city-tab' + (city==='seoul'?' active':'');
+  document.getElementById('ob-busan').className = 'ob-city-tab' + (city==='busan'?' active':'');
+  document.getElementById('ob-confirm').disabled = true;
+  renderObZones();
+}
+function renderObZones() {
+  const zones = HOTEL_ZONES[obCity] || [];
+  const el = document.getElementById('ob-zone-list');
+  el.innerHTML = '';
+  zones.forEach(z => {
+    const hasRoute = z.toVenue[currentConcert] !== null;
+    const isSelected = obSelectedZone?.id === z.id;
+    const card = document.createElement('div');
+    card.className = 'hotel-zone-card' + (isSelected ? ' selected' : '');
+    card.dataset.zoneId = z.id;
+    if (!hasRoute) card.style.opacity = '.45';
+    card.innerHTML = `
+      <div class="hz-emoji">${z.emoji}</div>
+      <div class="hz-info">
+        <div class="hz-name">${z.name}</div>
+        <div class="hz-name-ko">${z.name_ko}</div>
+        <div class="hz-desc">${z.desc}${!hasRoute ? ' · <span style="color:#e65100">No route for current concert</span>' : ''}</div>
+      </div>
+      <div class="hz-check">${isSelected ? '✓' : ''}</div>`;
+    el.appendChild(card);
+  });
+}
+function skipOnboarding() {
+  document.getElementById('onboarding').style.display = 'none';
+}
+function confirmOnboarding() {
+  if (!obSelectedZone) return;
+  myHotel = obSelectedZone;
+  document.getElementById('onboarding').style.display = 'none';
+  updateHotelBar();
+  placeHotelMarker();
+  renderContent();
+  drawRouteLines();
+  showToast(`🏨 Saved: ${myHotel.name}`);
+}
+function updateHotelBar() {
+  if (!myHotel) return;
+  const bar = document.getElementById('my-hotel-bar');
+  bar.style.display = 'flex';
+  document.getElementById('mhb-emoji').textContent = myHotel.emoji;
+  document.getElementById('mhb-name').textContent = myHotel.name;
+}
+function placeHotelMarker() {
+  if (hotelMarker) map.removeLayer(hotelMarker);
+  if (!myHotel) return;
+  const html = `<div style="display:flex;flex-direction:column;align-items:center">
+    <div style="background:white;border:2px solid #333;border-radius:8px;padding:3px 7px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px;box-shadow:0 2px 8px rgba(0,0,0,.12)">
+      ${myHotel.emoji} <span>My Stay</span>
+    </div>
+    <div style="width:2px;height:8px;background:#333;margin:0 auto"></div>
+  </div>`;
+  const icon = L.divIcon({ html, className:'', iconSize:[90,36], iconAnchor:[45,36] });
+  hotelMarker = L.marker([myHotel.lat, myHotel.lng], { icon, zIndexOffset:500 }).addTo(map);
+}
+
+// ══════════════════════════════════════════════════════
+// JOURNEY COMPARISON CARD
+// ══════════════════════════════════════════════════════
+function renderJourneyCompare(parent) {
+  if (!myHotel) return;
+  const c = CONCERTS[currentConcert];
+  const ap = AIRPORTS.find(a => a.id === currentAirport);
+  if (!ap) return;
+
+  const apToHotel = AIRPORT_TO_HOTEL[currentAirport]?.[myHotel.id];
+  const hotelToVenue = myHotel.toVenue[currentConcert];
+  const apToVenue = ap.concertRoutes[currentConcert]?.[0]; // best route
+
+  // Parse rough minutes for comparison
+  function parseMin(str) {
+    const m = str?.match(/(\d+)/);
+    return m ? parseInt(m[1]) : 999;
+  }
+  const directMin = parseMin(apToVenue?.taxiTime);
+  const viaHotelMin = parseMin(apToHotel?.taxiTime) + parseMin(hotelToVenue?.taxiTime);
+  const directFaster = directMin < viaHotelMin;
+
+  // Section title
+  const sec = document.createElement('div');
+  sec.className = 'sec-title';
+  sec.textContent = 'Full Journey Comparison';
+  parent.appendChild(sec);
+
+  // ── Card A: Airport → Hotel → Venue ──
+  if (apToHotel && hotelToVenue) {
+    const card = document.createElement('div');
+    card.className = 'journey-compare';
+    card.innerHTML = `
+      <div class="jc-header">
+        <div class="jc-header-icon">🏨</div>
+        <div class="jc-header-title">Via ${myHotel.emoji} ${myHotel.name}</div>
+        <span class="jc-header-badge ${!directFaster?'badge-fastest':'badge-slower'}">${!directFaster?'⚡ Faster':'Slower'}</span>
+      </div>
+
+      <!-- Leg 1: Airport → Hotel -->
+      <div class="jc-leg">
+        <div class="jc-leg-header">
+          <div class="jc-leg-from-to">
+            <span class="jc-from">✈️ ${ap.code}</span>
+            <span class="jc-arrow">→</span>
+            <span class="jc-to">${myHotel.emoji} My Stay</span>
+          </div>
+          <div class="jc-leg-time">${apToHotel.taxiTime}</div>
+        </div>
+        <div class="jc-leg-steps">
+          ${apToHotel.steps.map(s=>`
+            <div class="step-row">
+              <div class="step-mode">${s.m}</div>
+              <div class="step-body">
+                <div class="step-main">${s.t}</div>
+                <div class="step-sub">${s.s}</div>
+                <div class="step-chips">${s.chips.map(ch=>`<span class="chip ${ch.c}">${ch.l}</span>`).join('')}</div>
+              </div>
+            </div>`).join('')}
+        </div>
+        <div class="taxi-bar" style="margin:6px 0 0">
+          🚖 Taxi to hotel: <strong>${apToHotel.taxiFare}</strong>
+        </div>
+      </div>
+
+      <!-- Leg 2: Hotel → Venue -->
+      <div class="jc-leg">
+        <div class="jc-leg-header">
+          <div class="jc-leg-from-to">
+            <span class="jc-from">${myHotel.emoji} My Stay</span>
+            <span class="jc-arrow">→</span>
+            <span class="jc-to">${c.emoji} ${c.venue}</span>
+          </div>
+          <div class="jc-leg-time">${hotelToVenue.taxiTime}</div>
+        </div>
+        <div class="jc-leg-steps">
+          ${hotelToVenue.steps.map(s=>`
+            <div class="step-row">
+              <div class="step-mode">${s.m}</div>
+              <div class="step-body">
+                <div class="step-main">${s.t}</div>
+                <div class="step-sub">${s.s}</div>
+                <div class="step-chips">${s.chips.map(ch=>`<span class="chip ${ch.c}">${ch.l}</span>`).join('')}</div>
+              </div>
+            </div>`).join('')}
+        </div>
+        <div class="taxi-bar" style="margin:6px 0 0">
+          🚖 Taxi to venue: <strong>${hotelToVenue.taxiFare}</strong>
+          <div class="taxi-dest" style="margin-top:6px">
+            <div class="dest-row"><span class="dest-label">KO</span><span class="dest-val">${hotelToVenue.destKo}</span></div>
+            <div class="dest-row" style="margin-top:3px"><span class="dest-label">EN</span><span class="dest-val">${hotelToVenue.destEn}</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="jc-total">
+        <div class="jc-total-label">Total journey time</div>
+        <div class="jc-total-time">~${viaHotelMin} min</div>
+        <div class="jc-total-cost">Check-in first ✓</div>
+      </div>
+      <div class="jc-actions">
+        <button class="action-btn btn-uber   js-uber"  data-lat="${c.lat}" data-lng="${c.lng}" data-name="${c.venue}"   data-from="hotel">⬛ Uber</button>
+        <button class="action-btn btn-kakao  js-kakao" data-lat="${c.lat}" data-lng="${c.lng}" data-name="${c.venueKo}" data-from="hotel">🟡 KakaoT</button>
+        <button class="action-btn btn-google js-gmaps" data-lat="${c.lat}" data-lng="${c.lng}" data-name="${c.venue}"   data-from="hotel">🗺 Maps</button>
+      </div>`;
+    parent.appendChild(card);
+  }
+
+  // ── Card B: Airport → Venue direct ──
+  if (apToVenue) {
+    const card2 = document.createElement('div');
+    card2.className = 'journey-compare';
+    card2.innerHTML = `
+      <div class="jc-header">
+        <div class="jc-header-icon">⚡</div>
+        <div class="jc-header-title">Direct Airport → Venue</div>
+        <span class="jc-header-badge ${directFaster?'badge-fastest':'badge-slower'}">${directFaster?'⚡ Faster':'Slower'}</span>
+      </div>
+      <div class="jc-leg">
+        <div class="jc-leg-header">
+          <div class="jc-leg-from-to">
+            <span class="jc-from">✈️ ${ap.code}</span>
+            <span class="jc-arrow">→</span>
+            <span class="jc-to">${c.emoji} ${c.venue}</span>
+          </div>
+          <div class="jc-leg-time">${apToVenue.taxiTime}</div>
+        </div>
+        <div class="jc-leg-steps">
+          ${apToVenue.steps.map(s=>`
+            <div class="step-row">
+              <div class="step-mode">${s.m}</div>
+              <div class="step-body">
+                <div class="step-main">${s.t}</div>
+                <div class="step-sub">${s.s}</div>
+                <div class="step-chips">${s.chips.map(ch=>`<span class="chip ${ch.c}">${ch.l}</span>`).join('')}</div>
+              </div>
+            </div>`).join('')}
+        </div>
+        <div class="taxi-bar" style="margin:6px 0 0">
+          🚖 Taxi fare: <strong>${apToVenue.taxiFare}</strong>
+          <div class="taxi-dest" style="margin-top:6px">
+            <div class="dest-row"><span class="dest-label">KO</span><span class="dest-val">${apToVenue.destKo}</span></div>
+            <div class="dest-row" style="margin-top:3px"><span class="dest-label">EN</span><span class="dest-val">${apToVenue.destEn}</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="jc-total">
+        <div class="jc-total-label">Total journey time</div>
+        <div class="jc-total-time">~${directMin} min</div>
+        <div class="jc-total-cost">Go straight to concert</div>
+      </div>
+      <div class="jc-actions">
+        <button class="action-btn btn-uber   js-uber"  data-lat="${c.lat}" data-lng="${c.lng}" data-name="${c.venue}"   data-from="airport">⬛ Uber</button>
+        <button class="action-btn btn-kakao  js-kakao" data-lat="${c.lat}" data-lng="${c.lng}" data-name="${c.venueKo}" data-from="airport">🟡 KakaoT</button>
+        <button class="action-btn btn-google js-gmaps" data-lat="${c.lat}" data-lng="${c.lng}" data-name="${c.venue}"   data-from="airport">🗺 Maps</button>
+      </div>`;
+    parent.appendChild(card2);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+// ══════════════════════════════════════════════════════
+// START
+// ══════════════════════════════════════════════════════
+
+// Wire up onboarding buttons via event listeners (no inline onclick)
+document.addEventListener('DOMContentLoaded', () => {
+
+  // City tabs
+  document.getElementById('ob-seoul').addEventListener('click', () => switchObCity('seoul'));
+  document.getElementById('ob-busan').addEventListener('click', () => switchObCity('busan'));
+
+  // Skip
+  document.getElementById('ob-skip-btn').addEventListener('click', skipOnboarding);
+
+  // Confirm
+  document.getElementById('ob-confirm').addEventListener('click', confirmOnboarding);
+
+  // Hotel zone cards — delegated from the list container
+  document.getElementById('ob-zone-list').addEventListener('click', e => {
+    const card = e.target.closest('.hotel-zone-card');
+    if (!card) return;
+    const zoneId = card.dataset.zoneId;
+    const zone = [...(HOTEL_ZONES.seoul || []), ...(HOTEL_ZONES.busan || [])].find(z => z.id === zoneId);
+    if (!zone) return;
+    obSelectedZone = zone;
+    document.getElementById('ob-confirm').disabled = false;
+    renderObZones();
+  });
+});
+
+initMap();
+</script>
+</body>
+</html>
