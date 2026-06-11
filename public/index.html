@@ -132,6 +132,41 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
 #sheet-body::-webkit-scrollbar{width:3px}
 #sheet-body::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:2px}
 
+/* ── MOBILE BOTTOM SHEET (additive; desktop layout unchanged) ── */
+#sheet-drag, #sheet-mini-tabs { display:none; }
+@media (max-width:768px){
+  #map{ height:100vh; height:100dvh; }
+  #sheet{
+    top:auto; left:0; right:0; bottom:0; width:100%;
+    height:50vh;
+    border-left:none; overflow:hidden;
+    border-radius:16px 16px 0 0;
+    box-shadow:0 -4px 20px rgba(0,0,0,.15);
+    transition:height .3s cubic-bezier(.32,1.1,.4,1);
+  }
+  /* ignore the desktop horizontal slide on mobile */
+  #sheet.open, #sheet.hidden{ transform:none; }
+  #sheet.sheet-expanded{ height:80vh; }
+  #sheet.sheet-mini{ height:48px; }
+  /* in minimized state show only the drag handle + the mini tab bar */
+  #sheet.sheet-mini > *:not(#sheet-drag):not(#sheet-mini-tabs){ display:none !important; }
+  .sheet-handle{ display:none; }
+  #sheet-drag{
+    display:flex; align-items:center; justify-content:center;
+    height:18px; flex-shrink:0; cursor:grab; touch-action:none;
+  }
+  #sheet-drag::before{
+    content:''; width:40px; height:4px; border-radius:2px; background:var(--gray-200);
+  }
+  #sheet-mini-tabs{ display:none; gap:8px; padding:2px 12px 6px; flex-shrink:0; }
+  #sheet.sheet-mini #sheet-mini-tabs{ display:flex; }
+  #sheet-mini-tabs button{
+    flex:1; padding:7px; border:1.5px solid var(--gray-100); border-radius:10px;
+    background:var(--gray-50); font-family:var(--font-display); font-size:12px;
+    font-weight:600; color:var(--gray-700); cursor:pointer;
+  }
+}
+
 /* Section title */
 .sec-title{
   font-family:var(--font-display);font-size:13px;font-weight:600;
@@ -725,7 +760,7 @@ gtag('config', 'G-5XQZJX2QEK');
 <!-- FLOATING MAP BUTTONS -->
 <div id="map-btns">
   <div class="map-btn" id="btn-heatmap" onclick="toggleHeatmap()" title="Fan heatmap">🔥</div>
-  <div class="map-btn" id="btn-routes" onclick="toggleRoutes()" title="Show routes">✈️</div>
+  <div class="map-btn" id="btn-routes" onclick="toggleRoutes();mobileMinimizeSheet()" title="Show routes">✈️</div>
   <div class="map-btn" id="btn-live" onclick="openLiveModal()" title="Live location sharing">📡</div>
   <div class="map-btn poi-btn" data-cat="toilets" onclick="togglePOI('toilets')" title="Restrooms">🚻</div>
   <div class="map-btn poi-btn" data-cat="store" onclick="togglePOI('store')" title="Convenience stores">🏪</div>
@@ -736,6 +771,12 @@ gtag('config', 'G-5XQZJX2QEK');
 
 <!-- RIGHT SIDE PANEL -->
 <div id="sheet" class="open">
+  <!-- Mobile-only bottom-sheet drag handle + minimized tab bar -->
+  <div id="sheet-drag" title="Drag to resize"></div>
+  <div id="sheet-mini-tabs">
+    <button onclick="sheetRestoreTab('routes')">🗺 Routes</button>
+    <button onclick="sheetRestoreTab('meetups')">📍 Meet-ups</button>
+  </div>
   <div class="sheet-handle" id="sheet-handle" onclick="togglePanel()" title="Toggle panel">◀</div>
 
   <!-- Panel header with close -->
@@ -1356,6 +1397,12 @@ function initMap() {
 function togglePanel() {
   const sheet = document.getElementById('sheet');
   const handle = document.getElementById('sheet-handle');
+  // Mobile bottom-sheet: the ✕ / handle minimizes (or restores) the sheet.
+  if (isMobileSheet()) {
+    if (sheet.classList.contains('sheet-mini')) sheetSetState('default');
+    else sheetSetState('mini');
+    return;
+  }
   if (sheet.classList.contains('open')) {
     sheet.classList.remove('open');
     sheet.classList.add('hidden');
@@ -1366,6 +1413,52 @@ function togglePanel() {
     handle.textContent = '◀';
   }
 }
+
+// ── Mobile bottom-sheet helpers (no effect on desktop) ──
+function isMobileSheet() {
+  return window.matchMedia('(max-width: 768px)').matches;
+}
+
+// state: 'mini' (48px) | 'default' (50vh) | 'expanded' (80vh)
+function sheetSetState(state) {
+  const sheet = document.getElementById('sheet');
+  if (!sheet) return;
+  sheet.classList.remove('hidden');
+  sheet.classList.add('open');
+  sheet.classList.remove('sheet-mini', 'sheet-expanded');
+  if (state === 'mini') sheet.classList.add('sheet-mini');
+  else if (state === 'expanded') sheet.classList.add('sheet-expanded');
+}
+
+function sheetRestoreTab(tab) {
+  sheetSetState('default');
+  switchTab(tab);
+}
+
+function mobileMinimizeSheet() {
+  if (isMobileSheet()) sheetSetState('mini');
+}
+
+function setupMobileSheet() {
+  const drag = document.getElementById('sheet-drag');
+  if (!drag) return;
+  let startY = null, lastY = null;
+  drag.addEventListener('touchstart', e => {
+    startY = e.touches[0].clientY; lastY = startY;
+  }, { passive: true });
+  drag.addEventListener('touchmove', e => {
+    lastY = e.touches[0].clientY; // track for swipe distance
+  }, { passive: true });
+  drag.addEventListener('touchend', () => {
+    if (startY == null) return;
+    const dy = startY - (lastY != null ? lastY : startY); // + up, - down
+    if (dy > 100) sheetSetState('expanded');
+    else if (dy < -100) sheetSetState('mini');
+    else sheetSetState('default');
+    startY = lastY = null;
+  }, { passive: true });
+}
+document.addEventListener('DOMContentLoaded', setupMobileSheet);
 
 // ══════════════════════════════════════════════════════
 // CONCERT SELECTION
