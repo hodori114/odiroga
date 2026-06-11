@@ -59,5 +59,5 @@ Kakao JavaScript key, Supabase URL + anon key, GA4 measurement ID (`G-5XQZJX2QEK
 3. ✅ Supabase Auth (social login)
 4. ✅ Meetup location picker (Kakao Maps)
 5. ✅ Live location sharing (Supabase Realtime)
-6. ⬜ Seoul real-time city data (auto safety alerts)
+6. ✅ Seoul real-time city data (auto safety alerts)
 7. ⬜ Naver news RSS keyword detection (admin alerts)

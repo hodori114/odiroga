@@ -395,6 +395,21 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
 }
 .live-report:active{background:var(--gray-50)}
 #live-toggle.on{background:#c62828}
+/* Safety alert banner (Seoul real-time congestion) */
+#safety-banner{
+  position:fixed;top:52px;left:0;right:0;z-index:590;
+  display:none;align-items:center;gap:8px;
+  padding:8px 14px;background:#c62828;color:#fff;
+  font-family:var(--font-body);font-size:12px;font-weight:600;line-height:1.4;
+  box-shadow:0 2px 8px rgba(0,0,0,.18);
+}
+#safety-banner.show{display:flex}
+#safety-banner-text{flex:1}
+#safety-banner-close{
+  background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:50%;
+  width:22px;height:22px;font-size:12px;cursor:pointer;flex-shrink:0;
+}
+body.banner-on #map-btns{top:104px}
 .oauth-btn{
   width:100%;padding:12px;margin-top:10px;border-radius:var(--radius);
   border:1.5px solid var(--gray-200);background:var(--white);
@@ -655,6 +670,12 @@ gtag('config', 'G-5XQZJX2QEK');
   <button onclick="recenter()" style="background:var(--gray-50);border:1.5px solid var(--gray-200);border-radius:8px;padding:7px 12px;font-family:var(--font-display);font-size:11px;font-weight:600;cursor:pointer;color:var(--gray-600)">📍 Reset</button>
 </div>
 
+<!-- SAFETY ALERT BANNER (auto-filled from Seoul real-time city data) -->
+<div id="safety-banner">
+  <span id="safety-banner-text"></span>
+  <button id="safety-banner-close" onclick="dismissSafetyBanner()" title="Dismiss">✕</button>
+</div>
+
 <!-- FLOATING MAP BUTTONS -->
 <div id="map-btns">
   <div class="map-btn" id="btn-heatmap" onclick="toggleHeatmap()" title="Fan heatmap">🔥</div>
@@ -900,6 +921,13 @@ const LIVE_PLACES = [
   ]},
 ];
 
+// Seoul hotspots to monitor for crowd-driven danger zones. `area` must match the
+// API allow-list in api/seoul-safety.js. Seoul-only (Busan venue has no feed).
+const SAFETY_AREAS = [
+  { area:'올림픽공원',     label:'Olympic Park (KSPO DOME)', lat:37.5202, lng:127.1213, radius:600, artists:['xia'] },
+  { area:'잠실종합운동장', label:'Jamsil Sports Complex',    lat:37.5159, lng:127.0729, radius:700, artists:['xia'] },
+];
+
 const AIRPORTS = [
   {
     id:'ICN', name:'Incheon Intl', code:'ICN',
@@ -1099,6 +1127,11 @@ let sb = null;              // Supabase client
 let currentUser = null;     // logged-in user object, or null
 let pendingCreate = false;  // user tried to create a meetup before logging in
 
+// Safety / danger-zone state (Seoul real-time city data)
+let dangerLayers = [];      // Leaflet circles currently on the map
+let safetyTimer = null;     // 5-min refresh interval
+let safetyDismissed = false;
+
 // ══════════════════════════════════════════════════════
 // HOTEL ZONES DATA
 // ══════════════════════════════════════════════════════
@@ -1187,6 +1220,7 @@ function initMap() {
   renderMeetupMarkers();
   renderContent();
   drawRouteLines();
+  startSafetyMonitor();
 
   // Event delegation — transport buttons (js-uber / js-kakao / js-gmaps)
   document.getElementById('sheet-body').addEventListener('click', e => {
@@ -1248,6 +1282,9 @@ function selectConcert(id) {
   showToast(`${c.emoji} ${c.name} selected`);
   // Keep the logged-in user's followed-artist tag in sync.
   if (currentUser) { saveProfileArtist(id); updateAuthUI(); }
+  // Refresh danger zones for the newly selected artist's city.
+  safetyDismissed = false;
+  refreshSafety();
 }
 
 // ══════════════════════════════════════════════════════
@@ -2079,6 +2116,74 @@ async function reportUser(uid) {
 
 // Leave the channel cleanly when the page closes.
 window.addEventListener('beforeunload', () => { if (liveChannel) leaveLiveChannel(); });
+
+// ══════════════════════════════════════════════════════
+// SAFETY / DANGER ZONES (Seoul real-time city data, auto-refresh 5 min)
+// Replaces a static danger list: zones are built live from congestion data.
+// ══════════════════════════════════════════════════════
+function startSafetyMonitor() {
+  refreshSafety();
+  if (safetyTimer) clearInterval(safetyTimer);
+  safetyTimer = setInterval(refreshSafety, 5 * 60 * 1000); // 5 minutes
+}
+
+async function refreshSafety() {
+  const areas = SAFETY_AREAS.filter(a => a.artists.includes(currentConcert));
+  if (!areas.length) { clearDangerZones(); updateSafetyBanner([]); return; }
+  const results = await Promise.all(areas.map(async a => {
+    try {
+      const r = await fetch(`/api/seoul-safety?area=${encodeURIComponent(a.area)}`);
+      if (!r.ok) return null;
+      const d = await r.json();
+      return { ...a, ...d };
+    } catch (e) { return null; }
+  }));
+  const danger = results.filter(Boolean).filter(d => d.danger);
+  renderDangerZones(danger);
+  updateSafetyBanner(danger);
+}
+
+function clearDangerZones() {
+  dangerLayers.forEach(l => map.removeLayer(l));
+  dangerLayers = [];
+}
+
+function renderDangerZones(zones) {
+  clearDangerZones();
+  zones.forEach(z => {
+    const circle = L.circle([z.lat, z.lng], {
+      radius: z.radius || 600,
+      color: '#c62828', weight: 2, fillColor: '#c62828', fillOpacity: 0.18,
+    }).addTo(map);
+    circle.bindPopup(
+      `<strong>⚠️ ${z.label}</strong><br>${z.levelEn}${z.level ? ' (' + z.level + ')' : ''}` +
+      `${z.message ? '<br>' + z.message : ''}`
+    );
+    dangerLayers.push(circle);
+  });
+}
+
+function updateSafetyBanner(zones) {
+  const banner = document.getElementById('safety-banner');
+  const txt = document.getElementById('safety-banner-text');
+  if (!banner || !txt) return;
+  if (safetyDismissed || !zones.length) {
+    banner.classList.remove('show');
+    document.body.classList.remove('banner-on');
+    return;
+  }
+  const names = zones.map(z => z.label).join(', ');
+  txt.textContent = `⚠️ Very crowded now: ${names}. Expect congestion — leave early and use a safe station.`;
+  banner.classList.add('show');
+  document.body.classList.add('banner-on');
+}
+
+function dismissSafetyBanner() {
+  safetyDismissed = true;
+  const banner = document.getElementById('safety-banner');
+  if (banner) banner.classList.remove('show');
+  document.body.classList.remove('banner-on');
+}
 
 // ══════════════════════════════════════════════════════
 // CREATE MEETUP
