@@ -1038,10 +1038,11 @@ const SAFETY_AREAS = [
 // detour alert + green safe stations to route around them. Update as needed.
 const PROTEST_ZONES = [
   {
-    id:'jamsil-2026', active:true, artists:['xia'], city:'Seoul',
-    name:'Jamsil Sports Complex protest area',
-    lat:37.5159, lng:127.0729, radius:450,
-    detour:'Avoid Sports Complex Stn (Line 2). Enter Olympic Park via Olympic Park Stn (Line 5) Exit 3.',
+    id:'jamsil-demo', active:true, artists:['xia'], city:'Seoul', nearConcert:'xia',
+    name:'Protest Area', nameKo:'집회 구역',
+    lat:37.5178, lng:127.1235, radius:250,
+    message:'Protest near SK Olympic Handball Gymnasium',
+    detour:'Avoid SK Olympic Handball Gymnasium. Enter Olympic Park via Olympic Park Stn (Line 5) Exit 3.',
     safeStations:[
       { name:'Olympic Park Stn · Line 5 · Exit 3', lat:37.5160, lng:127.1305 },
       { name:'Mongchontoseong Stn · Line 8',       lat:37.5174, lng:127.1124 },
@@ -2559,19 +2560,26 @@ function renderProtestZones() {
   const zones = PROTEST_ZONES.filter(z => z.active && z.artists.includes(currentConcert));
   const venue = CONCERTS[currentConcert];
   zones.forEach(z => {
-    // Red avoid-zone
+    // Red avoid-zone — bolder, semi-transparent red (no stripe fill)
     const circle = L.circle([z.lat, z.lng], {
-      radius: z.radius || 400, color: '#b71c1c', weight: 2,
-      fillColor: '#b71c1c', fillOpacity: 0.22, dashArray: '4,4',
+      radius: z.radius || 400, color: '#dc3545', weight: 3,
+      fillColor: '#dc3545', fillOpacity: 0.25, dashArray: '8,4',
     }).addTo(map);
-    circle.bindPopup(`<strong>⚠️ ${z.name}</strong><br>Avoid this area.<br>${z.detour || ''}`);
+    circle.bindPopup(`<strong>⚠️ ${z.name}</strong><br>${z.message || 'Avoid this area.'}<br>${z.detour || ''}`);
     protestLayers.push(circle);
 
-    const warn = L.marker([z.lat, z.lng], {
-      icon: L.divIcon({ html: '<div class="poi-marker" style="border-color:#b71c1c">⚠️</div>', className: '', iconSize: [30, 30], iconAnchor: [15, 15] }),
+    // Prominent label banner on the circle
+    const label = L.marker([z.lat, z.lng], {
+      icon: L.divIcon({
+        className: '',
+        html: '<div style="font-size:14px;font-weight:700;color:#fff;background:rgba(220,53,69,0.95);' +
+              'padding:4px 10px;border-radius:8px;white-space:nowrap;text-align:center;' +
+              'box-shadow:0 2px 6px rgba(0,0,0,.3)">⚠️ Protest Zone — Avoid This Area</div>',
+        iconSize: [240, 30], iconAnchor: [120, 15],
+      }),
     }).addTo(map);
-    warn.bindPopup(`<strong>⚠️ ${z.name}</strong><br>${z.detour || 'Avoid this area.'}`);
-    protestLayers.push(warn);
+    label.bindPopup(`<strong>⚠️ ${z.name}</strong><br>${z.message || 'Avoid this area.'}<br>${z.detour || ''}`);
+    protestLayers.push(label);
 
     // Green safe stations + a dashed detour line to the venue
     (z.safeStations || []).forEach(s => {
