@@ -329,14 +329,14 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
   display:none;align-items:flex-end;justify-content:center;
 }
 #modal-overlay.open{display:flex}
-#modal,#auth-modal{
+#modal,.sheet-modal{
   background:var(--white);border-radius:20px 20px 0 0;
   width:100%;max-width:480px;padding:20px 20px 40px;
   animation:slide-up .28s cubic-bezier(.32,1.1,.4,1);
   max-height:92vh;overflow-y:auto;
 }
 @keyframes slide-up{from{transform:translateY(60px);opacity:0}to{transform:none;opacity:1}}
-#modal h2,#auth-modal h2{font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:16px}
+#modal h2,.sheet-modal h2{font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:16px}
 .modal-close{
   float:right;width:28px;height:28px;border-radius:50%;
   background:var(--gray-100);border:none;font-size:16px;
@@ -372,12 +372,21 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
 }
 .submit-btn:active{opacity:.85}
 /* Auth (Supabase social login) */
-#auth-overlay,#live-overlay{
+#auth-overlay,#live-overlay,#admin-overlay{
   position:fixed;inset:0;z-index:850;
   background:rgba(0,0,0,.4);backdrop-filter:blur(4px);
   display:none;align-items:flex-end;justify-content:center;
 }
-#auth-overlay.open,#live-overlay.open{display:flex}
+#auth-overlay.open,#live-overlay.open,#admin-overlay.open{display:flex}
+/* Admin news-alert list */
+.admin-item{border:1px solid var(--gray-100);border-radius:var(--radius-sm);padding:10px 11px;margin-bottom:8px}
+.admin-meta{font-size:10px;font-weight:700;color:#e8870c;text-transform:uppercase;letter-spacing:.3px}
+.admin-title{font-size:12px;font-weight:600;color:var(--gray-800);margin:3px 0 2px;line-height:1.4}
+.admin-link{font-size:10px;color:var(--gray-500)}
+.admin-actions{display:flex;gap:6px;margin-top:8px}
+.admin-actions button{flex:1;padding:7px;border-radius:var(--radius-sm);border:none;font-size:11px;font-weight:700;cursor:pointer}
+.adm-approve{background:#1b873f;color:#fff}
+.adm-reject{background:var(--gray-100);color:var(--gray-700)}
 /* Live sharing list */
 .live-item{
   display:flex;align-items:center;gap:10px;
@@ -395,21 +404,25 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
 }
 .live-report:active{background:var(--gray-50)}
 #live-toggle.on{background:#c62828}
-/* Safety alert banner (Seoul real-time congestion) */
-#safety-banner{
+/* Top banner stack (safety + news notices) */
+#banner-stack{
   position:fixed;top:52px;left:0;right:0;z-index:590;
+  display:flex;flex-direction:column;
+}
+.top-banner{
   display:none;align-items:center;gap:8px;
-  padding:8px 14px;background:#c62828;color:#fff;
+  padding:8px 14px;color:#fff;
   font-family:var(--font-body);font-size:12px;font-weight:600;line-height:1.4;
   box-shadow:0 2px 8px rgba(0,0,0,.18);
 }
-#safety-banner.show{display:flex}
-#safety-banner-text{flex:1}
-#safety-banner-close{
+.top-banner.show{display:flex}
+#safety-banner{background:#c62828}
+#news-banner{background:#e8870c}
+#safety-banner-text,#news-banner-text{flex:1}
+.top-banner-close{
   background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:50%;
   width:22px;height:22px;font-size:12px;cursor:pointer;flex-shrink:0;
 }
-body.banner-on #map-btns{top:104px}
 .oauth-btn{
   width:100%;padding:12px;margin-top:10px;border-radius:var(--radius);
   border:1.5px solid var(--gray-200);background:var(--white);
@@ -670,10 +683,18 @@ gtag('config', 'G-5XQZJX2QEK');
   <button onclick="recenter()" style="background:var(--gray-50);border:1.5px solid var(--gray-200);border-radius:8px;padding:7px 12px;font-family:var(--font-display);font-size:11px;font-weight:600;cursor:pointer;color:var(--gray-600)">📍 Reset</button>
 </div>
 
-<!-- SAFETY ALERT BANNER (auto-filled from Seoul real-time city data) -->
-<div id="safety-banner">
-  <span id="safety-banner-text"></span>
-  <button id="safety-banner-close" onclick="dismissSafetyBanner()" title="Dismiss">✕</button>
+<!-- TOP BANNER STACK -->
+<div id="banner-stack">
+  <!-- SAFETY ALERT BANNER (auto-filled from Seoul real-time city data) -->
+  <div id="safety-banner" class="top-banner">
+    <span id="safety-banner-text"></span>
+    <button class="top-banner-close" onclick="dismissSafetyBanner()" title="Dismiss">✕</button>
+  </div>
+  <!-- NEWS NOTICE BANNER (admin-approved protest/closure alerts) -->
+  <div id="news-banner" class="top-banner">
+    <span id="news-banner-text"></span>
+    <button class="top-banner-close" onclick="dismissNewsBanner()" title="Dismiss">✕</button>
+  </div>
 </div>
 
 <!-- FLOATING MAP BUTTONS -->
@@ -794,7 +815,7 @@ gtag('config', 'G-5XQZJX2QEK');
 
 <!-- LOGIN / ACCOUNT MODAL -->
 <div id="auth-overlay" onclick="closeLoginModal(event)">
-  <div id="auth-modal">
+  <div class="sheet-modal">
     <button class="modal-close" onclick="closeLoginModal()">✕</button>
     <h2 id="auth-title">Sign in 🔑</h2>
     <p style="font-size:12px;color:var(--gray-600);margin:-8px 0 14px;line-height:1.5">
@@ -821,7 +842,7 @@ gtag('config', 'G-5XQZJX2QEK');
 
 <!-- LIVE LOCATION SHARING MODAL -->
 <div id="live-overlay" onclick="closeLiveModal(event)">
-  <div id="auth-modal">
+  <div class="sheet-modal">
     <button class="modal-close" onclick="closeLiveModal()">✕</button>
     <h2>📡 Live nearby</h2>
     <p style="font-size:12px;color:var(--gray-600);margin:-8px 0 12px;line-height:1.5">
@@ -831,6 +852,20 @@ gtag('config', 'G-5XQZJX2QEK');
     <div id="live-status" class="auth-status" style="margin-bottom:10px"></div>
     <button class="submit-btn" id="live-toggle" onclick="toggleLiveShare()">📡 Share my location</button>
     <div id="live-list" style="margin-top:14px"></div>
+  </div>
+</div>
+
+<!-- ADMIN PANEL (news-alert approval) -->
+<div id="admin-overlay" onclick="closeAdminPanel(event)">
+  <div class="sheet-modal">
+    <button class="modal-close" onclick="closeAdminPanel()">✕</button>
+    <h2>🛡️ Admin · News alerts</h2>
+    <p style="font-size:12px;color:var(--gray-600);margin:-8px 0 12px;line-height:1.5">
+      Approve real alerts to show a public notice banner. Reject false positives.
+    </p>
+    <div id="admin-status" class="auth-status" style="text-align:left"></div>
+    <div id="admin-list" style="margin-top:10px"></div>
+    <button class="oauth-btn" onclick="loadPendingAlerts()" style="margin-top:8px">↻ Refresh</button>
   </div>
 </div>
 
@@ -1752,6 +1787,9 @@ function initAuth() {
   }
   sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+  // Surface any admin-approved news notice as soon as the client is ready.
+  loadApprovedNews();
+
   // Restore an existing session, then react to future changes.
   sb.auth.getSession().then(({ data }) => setUser(data?.session?.user || null));
   sb.auth.onAuthStateChange((_event, session) => {
@@ -2169,20 +2207,123 @@ function updateSafetyBanner(zones) {
   if (!banner || !txt) return;
   if (safetyDismissed || !zones.length) {
     banner.classList.remove('show');
-    document.body.classList.remove('banner-on');
+    updateBannerOffset();
     return;
   }
   const names = zones.map(z => z.label).join(', ');
   txt.textContent = `⚠️ Very crowded now: ${names}. Expect congestion — leave early and use a safe station.`;
   banner.classList.add('show');
-  document.body.classList.add('banner-on');
+  updateBannerOffset();
 }
 
 function dismissSafetyBanner() {
   safetyDismissed = true;
   const banner = document.getElementById('safety-banner');
   if (banner) banner.classList.remove('show');
-  document.body.classList.remove('banner-on');
+  updateBannerOffset();
+}
+
+// Push the floating map buttons below whatever banners are showing.
+function updateBannerOffset() {
+  const stack = document.getElementById('banner-stack');
+  const btns = document.getElementById('map-btns');
+  if (!stack || !btns) return;
+  const h = stack.offsetHeight;
+  btns.style.top = h > 0 ? (52 + h + 8) + 'px' : '';
+}
+
+// ══════════════════════════════════════════════════════
+// NEWS NOTICE BANNER + ADMIN APPROVAL (Step 7)
+// ══════════════════════════════════════════════════════
+const ADMIN_EMAILS = ['graciakz91@gmail.com'];
+let newsDismissed = false;
+
+function isAdmin() {
+  return !!(currentUser && ADMIN_EMAILS.includes((currentUser.email || '').toLowerCase()));
+}
+
+// Show the most recent admin-approved alert as a public notice banner.
+async function loadApprovedNews() {
+  if (!sb) return;
+  try {
+    const { data } = await sb.from('news_alerts')
+      .select('title,link').eq('status', 'approved')
+      .order('created_at', { ascending: false }).limit(1);
+    if (data && data.length) showNewsBanner(data[0]);
+    else hideNewsBanner();
+  } catch (e) { /* table may be missing — ignore */ }
+}
+
+function showNewsBanner(a) {
+  if (newsDismissed) return;
+  const t = document.getElementById('news-banner-text');
+  if (!t) return;
+  t.innerHTML = `📢 Notice: ${escapeHtml(a.title)}` +
+    (a.link ? ` <a href="${escapeHtml(a.link)}" target="_blank" rel="noopener" style="color:#fff;text-decoration:underline">details</a>` : '');
+  document.getElementById('news-banner').classList.add('show');
+  updateBannerOffset();
+}
+function hideNewsBanner() {
+  const b = document.getElementById('news-banner');
+  if (b) b.classList.remove('show');
+  updateBannerOffset();
+}
+function dismissNewsBanner() { newsDismissed = true; hideNewsBanner(); }
+
+function openAdminPanel() {
+  const sheet = document.getElementById('sheet');
+  if (sheet && sheet.classList.contains('hidden')) togglePanel();
+  document.getElementById('admin-overlay').classList.add('open');
+  loadPendingAlerts();
+}
+function closeAdminPanel(e) {
+  if (e && e.target !== document.getElementById('admin-overlay')) return;
+  document.getElementById('admin-overlay').classList.remove('open');
+}
+
+async function loadPendingAlerts() {
+  const status = document.getElementById('admin-status');
+  const list = document.getElementById('admin-list');
+  if (!status || !list) return;
+  if (!currentUser) { status.textContent = 'Sign in as the admin to review alerts.'; list.innerHTML = ''; openLoginModal(); return; }
+  if (!isAdmin()) { status.textContent = '🚫 This account is not an admin.'; list.innerHTML = ''; return; }
+  if (!sb) { status.textContent = 'Backend unavailable.'; return; }
+  status.textContent = 'Loading…';
+  try {
+    const { data, error } = await sb.from('news_alerts')
+      .select('*').eq('status', 'pending')
+      .order('created_at', { ascending: false }).limit(30);
+    if (error) throw error;
+    if (!data.length) { status.textContent = '✅ No pending alerts.'; list.innerHTML = ''; return; }
+    status.textContent = `${data.length} pending`;
+    list.innerHTML = data.map(a => `
+      <div class="admin-item">
+        <div class="admin-meta">${escapeHtml(a.matched_keyword || '')} · ${escapeHtml(a.matched_place || '')}</div>
+        <div class="admin-title">${escapeHtml(a.title)}</div>
+        <a class="admin-link" href="${escapeHtml(a.link)}" target="_blank" rel="noopener">source ↗</a>
+        <div class="admin-actions">
+          <button class="adm-approve" onclick="setAlertStatus(${a.id},'approved')">✓ Approve</button>
+          <button class="adm-reject" onclick="setAlertStatus(${a.id},'rejected')">✕ Reject</button>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    status.textContent = '⚠️ Could not load (check table/RLS).';
+    console.warn(e);
+  }
+}
+
+async function setAlertStatus(id, status) {
+  if (!sb || !isAdmin()) return;
+  try {
+    const { error } = await sb.from('news_alerts').update({ status }).eq('id', id);
+    if (error) throw error;
+    showToast(status === 'approved' ? '✓ Approved — notice is now live' : '✕ Rejected');
+    loadPendingAlerts();
+    if (status === 'approved') loadApprovedNews();
+  } catch (e) {
+    showToast('⚠️ Update failed');
+    console.warn(e);
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -2285,6 +2426,11 @@ document.addEventListener('DOMContentLoaded', () => {
     window._inviteValid = (urlParams.get('invite') === 'COCONUT2026');
   } else {
     window._inviteValid = false;
+  }
+
+  // Admin approval page: /admin opens the review panel (auth-gated to admins).
+  if (path.includes('/admin')) {
+    setTimeout(openAdminPanel, 700); // let Supabase auth restore the session first
   }
 
   document.querySelectorAll('#mi-langs .sel-chip').forEach(c => {
