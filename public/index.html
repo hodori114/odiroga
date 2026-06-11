@@ -1127,6 +1127,8 @@ function renderContent() {
     sec.textContent = myHotel ? `All Routes: ${ap?.code || ''} → ${c.venue}` : `${ap?.code || ''} → ${c.venue}`;
     el.appendChild(sec);
 
+    if (ap && c) renderLiveDrive(el, ap, c);
+
     routes.forEach((r, i) => renderRouteCard(el, r, i, c));
 
     // Nearby venues
@@ -1171,6 +1173,73 @@ function renderContent() {
       filtered.forEach(m => renderMeetupCard(el, m));
     }
   }
+}
+
+// ══════════════════════════════════════════════════════
+// LIVE DRIVE ESTIMATE (TMAP real-time, via /api serverless proxy)
+// ══════════════════════════════════════════════════════
+function fmtDriveTime(sec) {
+  if (!sec || sec <= 0) return null;
+  const m = Math.round(sec / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60), r = m % 60;
+  return r ? `${h} hr ${r} min` : `${h} hr`;
+}
+function fmtKRW(won) {
+  if (won == null || won <= 0) return null;
+  return '₩' + Math.round(won).toLocaleString('en-US');
+}
+
+function renderLiveDrive(parent, ap, c) {
+  const box = document.createElement('div');
+  box.className = 'taxi-bar';
+  box.style.cssText = 'margin:2px 0 10px;border:1px solid var(--gray-100)';
+  box.innerHTML = `<strong>🚖 Live drive estimate</strong> · <span class="ld-status">checking TMAP…</span>`;
+  parent.appendChild(box);
+
+  // Origin = airport, destination = venue. TMAP expects lng (X) / lat (Y).
+  const qs = `startX=${ap.lng}&startY=${ap.lat}&endX=${c.lng}&endY=${c.lat}`;
+
+  // Route summary (time / distance / taxi fare)
+  fetch(`/api/tmap-route?${qs}`)
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(d => {
+      if (!document.body.contains(box)) return; // stale (user switched away)
+      const time = fmtDriveTime(d.totalTime);
+      const fare = fmtKRW(d.taxiFare);
+      const km = d.totalDistance ? (d.totalDistance / 1000).toFixed(0) + ' km' : null;
+      const bits = [time && `🕐 ${time}`, km, fare && `🚖 ${fare}`].filter(Boolean);
+      if (!bits.length) throw new Error('empty');
+      box.innerHTML =
+        `<strong>🚖 Live drive (TMAP)</strong> · ${bits.join(' · ')}` +
+        `<br><small>Real-time car estimate, airport → venue${d.cached ? ' · cached' : ''}</small>` +
+        `<div class="ld-traffic" style="margin-top:6px"></div>`;
+      loadTraffic(box.querySelector('.ld-traffic'), qs);
+    })
+    .catch(() => {
+      if (!document.body.contains(box)) return;
+      // Graceful fallback: hide the live bar, hardcoded route cards below still show.
+      box.innerHTML =
+        `<strong>🚖 Live drive estimate</strong> · <span style="color:var(--gray-500)">unavailable right now</span>` +
+        `<br><small>Showing the route options below.</small>`;
+    });
+}
+
+function loadTraffic(el, qs) {
+  if (!el) return;
+  fetch(`/api/tmap-traffic?${qs}`)
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(d => {
+      if (!el.isConnected) return;
+      if (d.congested) {
+        el.innerHTML =
+          `<span class="chip" style="background:#ffebee;color:#c62828;font-weight:700">⚠️ Heavy traffic: ${d.label}</span>` +
+          ` <small style="color:var(--gray-500)">Leave earlier — roads near the venue are ${d.label.toLowerCase()}.</small>`;
+      } else if (d.level >= 1) {
+        el.innerHTML = `<span class="chip" style="background:#e8f5e9;color:#2e7d32">🟢 Traffic: ${d.label}</span>`;
+      }
+    })
+    .catch(() => { /* traffic is best-effort; stay silent on failure */ });
 }
 
 // ══════════════════════════════════════════════════════
