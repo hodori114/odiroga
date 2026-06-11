@@ -418,7 +418,8 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
 .top-banner.show{display:flex}
 #safety-banner{background:#c62828}
 #news-banner{background:#e8870c}
-#safety-banner-text,#news-banner-text{flex:1}
+#protest-banner{background:#b71c1c}
+#safety-banner-text,#news-banner-text,#protest-banner-text{flex:1}
 .top-banner-close{
   background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:50%;
   width:22px;height:22px;font-size:12px;cursor:pointer;flex-shrink:0;
@@ -701,6 +702,11 @@ gtag('config', 'G-5XQZJX2QEK');
     <span id="news-banner-text"></span>
     <button class="top-banner-close" onclick="dismissNewsBanner()" title="Dismiss">✕</button>
   </div>
+  <!-- PROTEST / DETOUR BANNER -->
+  <div id="protest-banner" class="top-banner">
+    <span id="protest-banner-text"></span>
+    <button class="top-banner-close" onclick="dismissProtestBanner()" title="Dismiss">✕</button>
+  </div>
 </div>
 
 <!-- FLOATING MAP BUTTONS -->
@@ -974,6 +980,22 @@ const SAFETY_AREAS = [
   { area:'잠실종합운동장', label:'Jamsil Sports Complex',    lat:37.5159, lng:127.0729, radius:700, artists:['xia'] },
 ];
 
+// Curated protest / avoid zones. `active:true` ones are shown in red with a
+// detour alert + green safe stations to route around them. Update as needed.
+const PROTEST_ZONES = [
+  {
+    id:'jamsil-2026', active:true, artists:['xia'], city:'Seoul',
+    name:'Jamsil Sports Complex protest area',
+    lat:37.5159, lng:127.0729, radius:450,
+    detour:'Avoid Sports Complex Stn (Line 2). Enter Olympic Park via Olympic Park Stn (Line 5) Exit 3.',
+    safeStations:[
+      { name:'Olympic Park Stn · Line 5 · Exit 3', lat:37.5160, lng:127.1305 },
+      { name:'Mongchontoseong Stn · Line 8',       lat:37.5174, lng:127.1124 },
+      { name:'Hanseong Baekje Stn · Line 9',       lat:37.5148, lng:127.1186 },
+    ],
+  },
+];
+
 const AIRPORTS = [
   {
     id:'ICN', name:'Incheon Intl', code:'ICN',
@@ -1185,6 +1207,10 @@ let dangerLayers = [];      // Leaflet circles currently on the map
 let safetyTimer = null;     // 5-min refresh interval
 let safetyDismissed = false;
 
+// Protest / detour state
+let protestLayers = [];     // Leaflet zone + station + detour layers
+let protestDismissed = false;
+
 // ══════════════════════════════════════════════════════
 // HOTEL ZONES DATA
 // ══════════════════════════════════════════════════════
@@ -1275,6 +1301,7 @@ function initMap() {
   renderContent();
   drawRouteLines();
   startSafetyMonitor();
+  renderProtestZones();
 
   // Event delegation — transport buttons (js-uber / js-kakao / js-gmaps)
   document.getElementById('sheet-body').addEventListener('click', e => {
@@ -1337,6 +1364,8 @@ function selectConcert(id) {
   // Refresh danger zones for the newly selected artist's city.
   safetyDismissed = false;
   refreshSafety();
+  protestDismissed = false;
+  renderProtestZones();
 }
 
 // ══════════════════════════════════════════════════════
@@ -1902,6 +1931,39 @@ function fetchPOIs() {
       showToast(poiMarkers.length ? `📍 ${poiMarkers.length} place(s) nearby` : '📍 None found here — try panning the map');
     })
     .catch(() => { showToast('⚠️ Could not load places — try again'); });
+
+  // OSM has no indoor toilets at Olympic Park — enrich with Korean public data.
+  if (activePOI.has('toilets')) addGovToilets();
+}
+
+// Public-data restrooms (전국공중화장실 표준데이터 via /api/public-toilets).
+// Only near the Songpa-gu venue area; silently no-ops if the API key isn't set.
+function addGovToilets() {
+  const c = map.getCenter();
+  if (geoDistM(c.lat, c.lng, 37.5196, 127.1225) > 6000) return; // KSPO DOME area only
+  fetch('/api/public-toilets?sigun=' + encodeURIComponent('송파구'))
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(d => {
+      if (!activePOI.has('toilets')) return;
+      const ctr = map.getCenter();
+      (d.toilets || []).forEach(t => {
+        if (geoDistM(ctr.lat, ctr.lng, t.lat, t.lng) > 2000) return;
+        const icon = L.divIcon({
+          html: '<div class="poi-marker" style="border-color:#2e7d32">🚻</div>',
+          className: '', iconSize: [28, 28], iconAnchor: [14, 14],
+        });
+        const m = L.marker([t.lat, t.lng], { icon }).addTo(map);
+        const where = [t.floor, t.addr].filter(Boolean).join(' · ');
+        m.bindPopup(
+          `<strong>🚻 ${escapeHtml(t.name)}</strong>` +
+          (where ? `<br>📍 ${escapeHtml(where)}` : '') +
+          (t.open ? `<br>🕐 ${escapeHtml(t.open)}` : '') +
+          '<br><small>공공데이터 · public data</small>'
+        );
+        poiMarkers.push(m);
+      });
+    })
+    .catch(() => { /* no key / API down → OSM-only, stay silent */ });
 }
 
 // ══════════════════════════════════════════════════════
@@ -2330,6 +2392,71 @@ function updateSafetyBanner(zones) {
 function dismissSafetyBanner() {
   safetyDismissed = true;
   const banner = document.getElementById('safety-banner');
+  if (banner) banner.classList.remove('show');
+  updateBannerOffset();
+}
+
+// ── Protest zones + detour ────────────────────────────
+function clearProtestZones() {
+  protestLayers.forEach(l => map.removeLayer(l));
+  protestLayers = [];
+}
+
+function renderProtestZones() {
+  clearProtestZones();
+  const zones = PROTEST_ZONES.filter(z => z.active && z.artists.includes(currentConcert));
+  const venue = CONCERTS[currentConcert];
+  zones.forEach(z => {
+    // Red avoid-zone
+    const circle = L.circle([z.lat, z.lng], {
+      radius: z.radius || 400, color: '#b71c1c', weight: 2,
+      fillColor: '#b71c1c', fillOpacity: 0.22, dashArray: '4,4',
+    }).addTo(map);
+    circle.bindPopup(`<strong>⚠️ ${z.name}</strong><br>Avoid this area.<br>${z.detour || ''}`);
+    protestLayers.push(circle);
+
+    const warn = L.marker([z.lat, z.lng], {
+      icon: L.divIcon({ html: '<div class="poi-marker" style="border-color:#b71c1c">⚠️</div>', className: '', iconSize: [30, 30], iconAnchor: [15, 15] }),
+    }).addTo(map);
+    warn.bindPopup(`<strong>⚠️ ${z.name}</strong><br>${z.detour || 'Avoid this area.'}`);
+    protestLayers.push(warn);
+
+    // Green safe stations + a dashed detour line to the venue
+    (z.safeStations || []).forEach(s => {
+      const sm = L.marker([s.lat, s.lng], {
+        icon: L.divIcon({ html: '<div class="poi-marker" style="border-color:#1b873f">🚉</div>', className: '', iconSize: [28, 28], iconAnchor: [14, 14] }),
+      }).addTo(map);
+      sm.bindPopup(`<strong>🚉 Safe entry</strong><br>${escapeHtml(s.name)}`);
+      protestLayers.push(sm);
+      if (venue) {
+        const line = L.polyline([[s.lat, s.lng], [venue.lat, venue.lng]], {
+          color: '#1b873f', weight: 3, dashArray: '8,6', opacity: 0.7,
+        }).addTo(map);
+        protestLayers.push(line);
+      }
+    });
+  });
+  updateProtestBanner(zones);
+}
+
+function updateProtestBanner(zones) {
+  const banner = document.getElementById('protest-banner');
+  const txt = document.getElementById('protest-banner-text');
+  if (!banner || !txt) return;
+  if (protestDismissed || !zones.length) {
+    banner.classList.remove('show');
+    updateBannerOffset();
+    return;
+  }
+  const z = zones[0];
+  txt.textContent = `🚨 Protest near ${z.name}. Detour: ${z.detour || 'use a safe station (green 🚉 on map).'}`;
+  banner.classList.add('show');
+  updateBannerOffset();
+}
+
+function dismissProtestBanner() {
+  protestDismissed = true;
+  const banner = document.getElementById('protest-banner');
   if (banner) banner.classList.remove('show');
   updateBannerOffset();
 }
