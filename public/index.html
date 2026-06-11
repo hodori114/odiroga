@@ -461,6 +461,7 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
   margin-top:8px;background:var(--gray-100);overflow:hidden;
 }
 .pick-pin{font-size:24px;line-height:1;text-align:center;background:none;border:none}
+.toilet-pin{font-size:18px;line-height:1;text-align:center;background:none;border:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
 #gps-btn{
   width:100%;padding:10px;margin-top:8px;border-radius:var(--radius-sm);
   border:1.5px solid var(--gray-200);background:var(--white);
@@ -701,6 +702,7 @@ gtag('config', 'G-5XQZJX2QEK');
   <div class="map-btn" id="btn-heatmap" onclick="toggleHeatmap()" title="Fan heatmap">🔥</div>
   <div class="map-btn" id="btn-routes" onclick="toggleRoutes()" title="Show routes">✈️</div>
   <div class="map-btn" id="btn-live" onclick="openLiveModal()" title="Live location sharing">📡</div>
+  <div class="map-btn" id="btn-toilets" onclick="toggleToilets()" title="Nearby restrooms">🚻</div>
 </div>
 
 <!-- RIGHT SIDE PANEL -->
@@ -1156,6 +1158,11 @@ let meetupMarkerObjs = [];
 let myHotel = null;
 let hotelMarker = null;
 
+// Nearby restrooms (OpenStreetMap Overpass, keyless)
+let showToilets = false;
+let toiletMarkers = [];
+let toiletTimer = null;
+
 // Access state (passcode unlock + anonymous local identity)
 const MEETUP_PASSCODE = 'COCONUT1215';
 let sb = null;              // Supabase client (used for live sharing + news DB, no auth)
@@ -1245,6 +1252,7 @@ function initMap() {
 
   map.on('moveend zoomend', () => {
     if (showHeatmap) drawHeatmap();
+    if (showToilets) { clearTimeout(toiletTimer); toiletTimer = setTimeout(fetchToilets, 600); }
   });
   window.addEventListener('resize', () => {
     if (showHeatmap) drawHeatmap();
@@ -1774,6 +1782,57 @@ function toggleRoutes() {
   showRoutes = !showRoutes;
   document.getElementById('btn-routes').classList.toggle('active', showRoutes);
   drawRouteLines();
+}
+
+// ══════════════════════════════════════════════════════
+// NEARBY RESTROOMS (OpenStreetMap Overpass API — keyless)
+// ══════════════════════════════════════════════════════
+function toggleToilets() {
+  showToilets = !showToilets;
+  document.getElementById('btn-toilets').classList.toggle('active', showToilets);
+  if (showToilets) { fetchToilets(); }
+  else { clearToilets(); showToast('🚻 Restrooms hidden'); }
+}
+
+function clearToilets() {
+  toiletMarkers.forEach(m => map.removeLayer(m));
+  toiletMarkers = [];
+}
+
+function fetchToilets() {
+  const c = map.getCenter();
+  const radius = 1800; // metres around the current view
+  const q = `[out:json][timeout:25];(node["amenity"="toilets"](around:${radius},${c.lat},${c.lng});way["amenity"="toilets"](around:${radius},${c.lat},${c.lng}););out center 80;`;
+  showToast('🚻 Finding restrooms…');
+  fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'data=' + encodeURIComponent(q),
+  })
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(data => {
+      if (!showToilets) return; // toggled off while loading
+      clearToilets();
+      const els = (data && data.elements) || [];
+      els.forEach(el => {
+        const lat = el.lat != null ? el.lat : (el.center && el.center.lat);
+        const lng = el.lon != null ? el.lon : (el.center && el.center.lon);
+        if (lat == null || lng == null) return;
+        const t = el.tags || {};
+        const icon = L.divIcon({ html: '🚻', className: 'toilet-pin', iconSize: [22, 22], iconAnchor: [11, 11] });
+        const m = L.marker([lat, lng], { icon }).addTo(map);
+        const bits = [];
+        if (t.wheelchair === 'yes') bits.push('♿ accessible');
+        if (t.fee === 'yes') bits.push('💰 fee');
+        else if (t.fee === 'no') bits.push('free');
+        if (t.opening_hours) bits.push('🕐 ' + t.opening_hours);
+        m.bindPopup(`<strong>🚻 ${escapeHtml(t.name || 'Public restroom')}</strong>` +
+          (bits.length ? '<br>' + escapeHtml(bits.join(' · ')) : ''));
+        toiletMarkers.push(m);
+      });
+      showToast(els.length ? `🚻 ${toiletMarkers.length} restroom(s) nearby` : '🚻 None found here — try panning the map');
+    })
+    .catch(() => { showToast('⚠️ Could not load restrooms — try again'); });
 }
 
 // ══════════════════════════════════════════════════════
