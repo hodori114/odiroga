@@ -395,6 +395,33 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
 }
 #acct-btn.in{background:var(--black);color:var(--white)}
 .auth-status{font-size:12px;color:var(--gray-600);margin:6px 0 2px;text-align:center}
+/* Kakao Maps location picker (meetup create) */
+.loc-search-row{display:flex;gap:6px}
+.loc-search-row input{flex:1}
+.loc-search-row button{
+  width:42px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);
+  background:var(--white);font-size:15px;cursor:pointer;flex-shrink:0;
+}
+.loc-search-row button:active{background:var(--gray-50)}
+#kakao-results{margin-top:6px;max-height:124px;overflow-y:auto}
+.kr-item{
+  padding:8px 10px;border:1px solid var(--gray-100);border-radius:var(--radius-sm);
+  margin-bottom:5px;cursor:pointer;transition:background .12s;
+}
+.kr-item:active{background:var(--gray-50)}
+.kr-name{font-size:12px;font-weight:600;color:var(--gray-800)}
+.kr-addr{font-size:10px;color:var(--gray-500);margin-top:1px}
+#kakao-map{
+  width:100%;height:180px;border-radius:var(--radius-sm);
+  margin-top:8px;background:var(--gray-100);
+}
+#gps-btn{
+  width:100%;padding:10px;margin-top:8px;border-radius:var(--radius-sm);
+  border:1.5px solid var(--gray-200);background:var(--white);
+  font-family:var(--font-display);font-size:12px;font-weight:600;cursor:pointer;
+  color:var(--gray-700);display:flex;align-items:center;justify-content:center;gap:6px;
+}
+#gps-btn:active{background:var(--gray-50)}
 
 /* ── TOAST ────────────────────────────────────────── */
 #toast{
@@ -592,6 +619,8 @@ gtag('config', 'G-5XQZJX2QEK');
 </script>
 <!-- Supabase JS (Auth + Realtime) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Kakao Maps SDK (meetup location picker only; main map stays Leaflet). services lib = Places search -->
+<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=d2bcea7a35eabce470ff95de1790f42e&libraries=services&autoload=false"></script>
 </head>
 <body>
 
@@ -708,7 +737,18 @@ gtag('config', 'G-5XQZJX2QEK');
       <label>Note (optional)</label>
       <textarea id="mi-note" placeholder="Meet at Exit 2, bring lightsticks!"></textarea>
     </div>
-    <div id="modal-loc-hint">📌 Tap the map to set your meeting location</div>
+    <div class="field">
+      <label>Meeting location</label>
+      <div class="loc-search-row">
+        <input id="kakao-search" placeholder="Search terminal, gate, station exit…"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();kakaoSearch();}">
+        <button type="button" onclick="kakaoSearch()" title="Search">🔍</button>
+      </div>
+      <div id="kakao-results"></div>
+      <div id="kakao-map"></div>
+      <button type="button" id="gps-btn" onclick="useMyLocation()">📍 Use my current location (GPS)</button>
+    </div>
+    <div id="modal-loc-hint">📌 Search, tap the map, or use GPS to set your location</div>
     <button class="submit-btn" onclick="confirmCreate()">Create Meet-up →</button>
   </div>
 </div>
@@ -1697,6 +1737,95 @@ async function saveProfileArtist(artist) {
 document.addEventListener('DOMContentLoaded', initAuth);
 
 // ══════════════════════════════════════════════════════
+// KAKAO MAPS LOCATION PICKER (meetup create only)
+// Main map stays Leaflet; this is a small picker inside the modal.
+// ══════════════════════════════════════════════════════
+let kakaoMap = null, kakaoMarker = null, kakaoPlaces = null, kakaoReady = false;
+
+function initKakaoPicker(centerLat, centerLng) {
+  const container = document.getElementById('kakao-map');
+  if (typeof kakao === 'undefined' || !kakao.maps) {
+    // SDK didn't load (e.g. domain not registered in Kakao console). GPS + manual still work.
+    if (container) container.innerHTML =
+      '<div style="padding:18px;font-size:11px;color:var(--gray-500);text-align:center;line-height:1.5">' +
+      'Map unavailable.<br>Use 📍 GPS to set your location.</div>';
+    return;
+  }
+  kakao.maps.load(() => {
+    const center = new kakao.maps.LatLng(centerLat, centerLng);
+    if (!kakaoMap) {
+      kakaoMap = new kakao.maps.Map(container, { center, level: 4 });
+      kakaoMarker = new kakao.maps.Marker({ position: center, map: kakaoMap });
+      kakaoPlaces = new kakao.maps.services.Places();
+      kakao.maps.event.addListener(kakaoMap, 'click', (mouseEvent) => {
+        const ll = mouseEvent.latLng;
+        setPickLocation(ll.getLat(), ll.getLng());
+      });
+      kakaoReady = true;
+    } else {
+      kakaoMap.setCenter(center);
+    }
+    // Container was hidden at creation time → force a relayout once visible.
+    setTimeout(() => { if (kakaoMap) { kakaoMap.relayout(); kakaoMap.setCenter(center); } }, 60);
+  });
+}
+
+function setPickLocation(lat, lng, label) {
+  pendingLoc = { lat, lng };
+  if (kakaoReady && kakaoMarker) {
+    const pos = new kakao.maps.LatLng(lat, lng);
+    kakaoMarker.setPosition(pos);
+    if (kakaoMap) kakaoMap.setCenter(pos);
+  }
+  const hint = document.getElementById('modal-loc-hint');
+  if (hint) hint.textContent = label
+    ? `📌 ${label}`
+    : `📌 Set: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+}
+
+function kakaoSearch() {
+  const q = document.getElementById('kakao-search').value.trim();
+  const box = document.getElementById('kakao-results');
+  if (!q) return;
+  if (!kakaoReady || !kakaoPlaces) { showToast('⚠️ Search unavailable here'); return; }
+  // Bias results to near the current venue (terminals, gates, station exits).
+  const c = CONCERTS[currentConcert];
+  const opts = c
+    ? { location: new kakao.maps.LatLng(c.lat, c.lng), radius: 20000, sort: kakao.maps.services.SortBy.DISTANCE }
+    : {};
+  kakaoPlaces.keywordSearch(q, (data, status) => {
+    box.innerHTML = '';
+    if (status !== kakao.maps.services.Status.OK || !data.length) {
+      box.innerHTML = '<div class="kr-item" style="cursor:default"><div class="kr-name">No results</div></div>';
+      return;
+    }
+    data.slice(0, 5).forEach(p => {
+      const lat = parseFloat(p.y), lng = parseFloat(p.x);
+      const item = document.createElement('div');
+      item.className = 'kr-item';
+      item.innerHTML = `<div class="kr-name">${p.place_name}</div>` +
+                       `<div class="kr-addr">${p.road_address_name || p.address_name || ''}</div>`;
+      item.onclick = () => {
+        setPickLocation(lat, lng, p.place_name);
+        box.innerHTML = '';
+        document.getElementById('kakao-search').value = p.place_name;
+      };
+      box.appendChild(item);
+    });
+  }, opts);
+}
+
+function useMyLocation() {
+  if (!navigator.geolocation) { showToast('⚠️ GPS not supported'); return; }
+  showToast('📍 Locating…');
+  navigator.geolocation.getCurrentPosition(
+    pos => setPickLocation(pos.coords.latitude, pos.coords.longitude, 'My current location'),
+    err => { showToast('⚠️ Could not get your location'); console.warn(err); },
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+}
+
+// ══════════════════════════════════════════════════════
 // CREATE MEETUP
 // ══════════════════════════════════════════════════════
 function startCreateMeetup() {
@@ -1712,7 +1841,9 @@ function startCreateMeetup() {
   document.getElementById('mi-note').value = '';
   document.getElementById('mi-time').value = '17:00';
   document.getElementById('mi-concert').value = currentConcert;
-  document.getElementById('modal-loc-hint').textContent = '📌 Tap the map to set your meeting location';
+  document.getElementById('modal-loc-hint').textContent = '📌 Search, tap the map, or use GPS to set your location';
+  document.getElementById('kakao-search').value = '';
+  document.getElementById('kakao-results').innerHTML = '';
   document.querySelectorAll('#mi-langs .sel-chip').forEach(c => {
     c.classList.toggle('sel', ['🇺🇸 EN','🇰🇷 KR'].includes(c.dataset.l));
     updateChipStyle(c);
@@ -1722,6 +1853,10 @@ function startCreateMeetup() {
   const sheet = document.getElementById('sheet');
   if (sheet.classList.contains('hidden')) togglePanel();
   document.getElementById('modal-overlay').classList.add('open');
+
+  // Init the Kakao location picker centered on the current venue.
+  const c = CONCERTS[currentConcert];
+  initKakaoPicker(c ? c.lat : 37.5665, c ? c.lng : 126.978);
 }
 
 function confirmCreate() {
@@ -1732,7 +1867,7 @@ function confirmCreate() {
   const name = document.getElementById('mi-name').value.trim();
   const concert = document.getElementById('mi-concert').value;
   if (!name) { showToast('⚠️ Please enter a name'); return; }
-  if (!pendingLoc) { showToast('⚠️ Tap the map to set location'); return; }
+  if (!pendingLoc) { showToast('⚠️ Set a location (search, map, or GPS)'); return; }
   const langs = [...document.querySelectorAll('#mi-langs .sel-chip.sel')].map(c => c.dataset.l);
   const m = {
     id: ++muIdSeq, concert,
