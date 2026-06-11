@@ -813,29 +813,29 @@ gtag('config', 'G-5XQZJX2QEK');
   </div>
 </div>
 
-<!-- LOGIN / ACCOUNT MODAL -->
+<!-- PASSCODE / ACCESS MODAL -->
 <div id="auth-overlay" onclick="closeLoginModal(event)">
   <div class="sheet-modal">
     <button class="modal-close" onclick="closeLoginModal()">✕</button>
-    <h2 id="auth-title">Sign in 🔑</h2>
+    <h2 id="auth-title">🔒 Enter passcode</h2>
     <p style="font-size:12px;color:var(--gray-600);margin:-8px 0 14px;line-height:1.5">
-      Sign in to <strong>create</strong> a meet-up. Joining a meet-up still works without an account.
+      Enter the passcode to <strong>create</strong> a meet-up and share live location.
+      Joining a meet-up still works without it.
     </p>
     <div id="auth-loggedout">
       <div class="field" style="margin-bottom:8px">
-        <label>Email</label>
-        <input id="magic-email" type="email" inputmode="email" autocomplete="email"
-               placeholder="you@email.com"
-               onkeydown="if(event.key==='Enter'){event.preventDefault();sendMagicLink();}">
+        <label>Passcode</label>
+        <input id="passcode-input" type="password" inputmode="text" autocomplete="off"
+               placeholder="••••••••"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();unlockWithPasscode();}">
       </div>
-      <button class="submit-btn" onclick="sendMagicLink()">✉️ Send me a login link</button>
-      <div id="magic-status" class="auth-status"></div>
+      <button class="submit-btn" onclick="unlockWithPasscode()">Unlock</button>
+      <div id="passcode-status" class="auth-status"></div>
     </div>
     <div id="auth-loggedin" style="display:none">
       <div class="auth-status" id="auth-email"></div>
-      <div class="auth-status" id="auth-artist" style="margin-bottom:12px"></div>
       <button class="submit-btn" onclick="startCreateMeetup()">＋ Create a Meet-up</button>
-      <button class="oauth-btn" onclick="signOut()" style="margin-top:10px">Sign out</button>
+      <button class="oauth-btn" onclick="lockApp()" style="margin-top:10px">Lock</button>
     </div>
   </div>
 </div>
@@ -1157,10 +1157,12 @@ let meetupMarkerObjs = [];
 let myHotel = null;
 let hotelMarker = null;
 
-// Auth state (Supabase)
-let sb = null;              // Supabase client
-let currentUser = null;     // logged-in user object, or null
-let pendingCreate = false;  // user tried to create a meetup before logging in
+// Access state (passcode unlock + anonymous local identity)
+const MEETUP_PASSCODE = 'COCONUT1215';
+let sb = null;              // Supabase client (used for live sharing + news DB, no auth)
+let unlocked = false;       // passcode entered correctly?
+let localUserId = null;     // anonymous per-device id (localStorage)
+let pendingCreate = false;  // user tried to create a meetup before unlocking
 
 // Safety / danger-zone state (Seoul real-time city data)
 let dangerLayers = [];      // Leaflet circles currently on the map
@@ -1315,8 +1317,6 @@ function selectConcert(id) {
   const sheet = document.getElementById('sheet');
   if (sheet.classList.contains('hidden')) togglePanel();
   showToast(`${c.emoji} ${c.name} selected`);
-  // Keep the logged-in user's followed-artist tag in sync.
-  if (currentUser) { saveProfileArtist(id); updateAuthUI(); }
   // Refresh danger zones for the newly selected artist's city.
   safetyDismissed = false;
   refreshSafety();
@@ -1778,37 +1778,29 @@ function toggleRoutes() {
 }
 
 // ══════════════════════════════════════════════════════
-// AUTH (Supabase social login)
+// ACCESS (passcode unlock — no accounts)
 // ══════════════════════════════════════════════════════
-function initAuth() {
-  if (!window.supabase || !window.supabase.createClient) {
-    console.warn('Supabase library not loaded — auth disabled, app still works.');
-    return;
-  }
-  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-  // Surface any admin-approved news notice as soon as the client is ready.
-  loadApprovedNews();
-
-  // Restore an existing session, then react to future changes.
-  sb.auth.getSession().then(({ data }) => setUser(data?.session?.user || null));
-  sb.auth.onAuthStateChange((_event, session) => {
-    const wasLoggedOut = !currentUser;
-    setUser(session?.user || null);
-    // Just signed in: save artist tag, and resume a pending create if any.
-    if (wasLoggedOut && currentUser) {
-      saveProfileArtist(currentConcert);
-      if (pendingCreate) {
-        pendingCreate = false;
-        closeLoginModal();
-        startCreateMeetup();
-      }
+function getLocalUserId() {
+  try {
+    let id = localStorage.getItem('odiroga_uid');
+    if (!id) {
+      id = 'u-' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+      localStorage.setItem('odiroga_uid', id);
     }
-  });
+    return id;
+  } catch (e) {
+    return 'u-' + Math.random().toString(36).slice(2);
+  }
 }
 
-function setUser(user) {
-  currentUser = user;
+function initAuth() {
+  localUserId = getLocalUserId();
+  try { unlocked = localStorage.getItem('odiroga_unlocked') === '1'; } catch (e) {}
+  // Supabase client is still used for live sharing + the news banner (no auth).
+  if (window.supabase && window.supabase.createClient) {
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    loadApprovedNews();
+  }
   updateAuthUI();
 }
 
@@ -1817,22 +1809,44 @@ function updateAuthUI() {
   const out = document.getElementById('auth-loggedout');
   const inn = document.getElementById('auth-loggedin');
   const title = document.getElementById('auth-title');
-  if (currentUser) {
-    const initial = (currentUser.email || '?').trim().charAt(0).toUpperCase();
-    if (btn) { btn.textContent = initial; btn.classList.add('in'); }
+  if (unlocked) {
+    if (btn) { btn.textContent = '🔓'; btn.classList.add('in'); }
     if (out) out.style.display = 'none';
     if (inn) inn.style.display = 'block';
-    if (title) title.textContent = 'Your account 👤';
+    if (title) title.textContent = 'Unlocked 🔓';
     const em = document.getElementById('auth-email');
-    const ar = document.getElementById('auth-artist');
-    if (em) em.textContent = currentUser.email || 'Signed in';
-    if (ar) ar.textContent = `Following: ${currentConcert ? currentConcert.toUpperCase() : '—'}`;
+    if (em) em.textContent = 'You can create meet-ups & share live location.';
   } else {
-    if (btn) { btn.textContent = '👤'; btn.classList.remove('in'); }
+    if (btn) { btn.textContent = '🔒'; btn.classList.remove('in'); }
     if (out) out.style.display = 'block';
     if (inn) inn.style.display = 'none';
-    if (title) title.textContent = 'Sign in 🔑';
+    if (title) title.textContent = '🔒 Enter passcode';
   }
+}
+
+function unlockWithPasscode() {
+  const input = document.getElementById('passcode-input');
+  const status = document.getElementById('passcode-status');
+  const v = (input.value || '').trim();
+  if (v === MEETUP_PASSCODE) {
+    unlocked = true;
+    try { localStorage.setItem('odiroga_unlocked', '1'); } catch (e) {}
+    gtag('event', 'unlock', {});
+    input.value = '';
+    if (status) status.textContent = '';
+    updateAuthUI();
+    showToast('🔓 Unlocked!');
+    if (pendingCreate) { pendingCreate = false; closeLoginModal(); startCreateMeetup(); }
+  } else {
+    if (status) status.textContent = '⚠️ Wrong passcode.';
+  }
+}
+
+function lockApp() {
+  unlocked = false;
+  try { localStorage.removeItem('odiroga_unlocked'); } catch (e) {}
+  updateAuthUI();
+  showToast('🔒 Locked');
 }
 
 function openLoginModal() {
@@ -1844,51 +1858,6 @@ function openLoginModal() {
 function closeLoginModal(e) {
   if (e && e.target !== document.getElementById('auth-overlay')) return;
   document.getElementById('auth-overlay').classList.remove('open');
-}
-
-async function sendMagicLink() {
-  if (!sb) { showToast('⚠️ Login unavailable right now'); return; }
-  const input = document.getElementById('magic-email');
-  const status = document.getElementById('magic-status');
-  const email = (input.value || '').trim();
-  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    if (status) status.textContent = '⚠️ Enter a valid email address.';
-    return;
-  }
-  if (status) status.textContent = 'Sending…';
-  gtag('event', 'login', { method: 'magiclink' });
-  // Magic link returns to the same artist path (/bts, /xia); supabase-js picks up
-  // the session from the URL automatically (detectSessionInUrl).
-  const emailRedirectTo = window.location.origin + window.location.pathname + window.location.search;
-  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo } });
-  if (error) {
-    if (status) status.textContent = '⚠️ ' + error.message;
-    console.error(error);
-    return;
-  }
-  if (status) status.textContent = '✅ Check your email for the login link!';
-}
-
-async function signOut() {
-  if (!sb) return;
-  await sb.auth.signOut();
-  setUser(null);
-  closeLoginModal();
-  showToast('Signed out');
-}
-
-// Save which artist the user follows to their profile row.
-async function saveProfileArtist(artist) {
-  if (!sb || !currentUser || !artist) return;
-  try {
-    await sb.from('profiles').upsert({
-      id: currentUser.id,
-      email: currentUser.email,
-      artist: artist.toUpperCase(),
-    }, { onConflict: 'id' });
-  } catch (e) {
-    console.warn('profile upsert failed (table/policy may be missing):', e?.message || e);
-  }
 }
 
 document.addEventListener('DOMContentLoaded', initAuth);
@@ -2032,8 +2001,7 @@ function snapToZone(lat, lng) {
 }
 
 function liveNick() {
-  const u = currentUser;
-  return (u?.user_metadata?.full_name || u?.user_metadata?.name || u?.email?.split('@')[0] || 'Fan').slice(0, 24);
+  return 'Fan ' + String(localUserId || '').slice(-4);
 }
 
 async function loadBlocked() {
@@ -2046,7 +2014,7 @@ async function loadBlocked() {
 }
 
 function openLiveModal() {
-  if (!currentUser) { openLoginModal(); showToast('🔑 Sign in to use live sharing'); return; }
+  if (!unlocked) { openLoginModal(); showToast('🔒 Enter passcode to use live sharing'); return; }
   const sheet = document.getElementById('sheet');
   if (sheet && sheet.classList.contains('hidden')) togglePanel();
   document.getElementById('live-overlay').classList.add('open');
@@ -2063,7 +2031,7 @@ function refreshLiveStatus() {
   const btn = document.getElementById('live-toggle');
   if (!st || !btn) return;
   const win = liveWindowState();
-  const blockedSelf = currentUser && liveBlocked.has(currentUser.id);
+  const blockedSelf = liveBlocked.has(localUserId);
   if (blockedSelf) st.textContent = '🚫 Your sharing is disabled (multiple reports).';
   else if (!win.open) st.textContent = '⏳ ' + win.msg;
   else if (liveSharing) st.textContent = `📡 Sharing as "${liveMyZone}" · ${liveMyPlace?.name || ''}`;
@@ -2078,7 +2046,7 @@ async function toggleLiveShare() {
   if (liveSharing) { stopLiveShare(); return; }
   if (!sb) { showToast('⚠️ Live unavailable'); return; }
   await loadBlocked();
-  if (currentUser && liveBlocked.has(currentUser.id)) { refreshLiveStatus(); return; }
+  if (liveBlocked.has(localUserId)) { refreshLiveStatus(); return; }
   if (!liveWindowState().open) { refreshLiveStatus(); return; }
   if (!navigator.geolocation) { showToast('⚠️ GPS not supported'); return; }
   showToast('📍 Finding your zone…');
@@ -2095,12 +2063,12 @@ async function joinLiveChannel() {
   await leaveLiveChannel();
   // Channel name scopes to artist + place → only same-artist, same-place fans meet.
   const name = `live:${currentConcert}:${liveMyPlace.id}`;
-  liveChannel = sb.channel(name, { config: { presence: { key: currentUser.id } } });
+  liveChannel = sb.channel(name, { config: { presence: { key: localUserId } } });
   liveChannel.on('presence', { event: 'sync' }, renderLiveList);
   liveChannel.subscribe(async status => {
     if (status === 'SUBSCRIBED') {
       // Only the coarse zone label is broadcast — never raw coordinates.
-      await liveChannel.track({ uid: currentUser.id, nick: liveNick(), zone: liveMyZone, place: liveMyPlace.name });
+      await liveChannel.track({ uid: localUserId, nick: liveNick(), zone: liveMyZone, place: liveMyPlace.name });
       liveSharing = true;
       gtag('event', 'live_share_start', { artist: currentConcert.toUpperCase(), place: liveMyPlace.id });
       refreshLiveStatus();
@@ -2130,7 +2098,7 @@ function renderLiveList() {
   if (!liveChannel || !liveSharing) { box.innerHTML = ''; return; }
   const people = [];
   Object.values(liveChannel.presenceState()).forEach(arr => arr.forEach(p => people.push(p)));
-  const others = people.filter(p => p.uid && p.uid !== currentUser.id && !liveBlocked.has(p.uid));
+  const others = people.filter(p => p.uid && p.uid !== localUserId && !liveBlocked.has(p.uid));
   if (!others.length) {
     box.innerHTML = '<div class="auth-status">No one else sharing here yet. Hang tight! 💜</div>';
     return;
@@ -2149,10 +2117,10 @@ function renderLiveList() {
 }
 
 async function reportUser(uid) {
-  if (!sb || !currentUser || !uid) return;
+  if (!sb || !unlocked || !uid) return;
   try {
     const { error } = await sb.from('reports').upsert(
-      { reporter: currentUser.id, reported: uid, reason: 'suspicious' },
+      { reporter: localUserId, reported: uid, reason: 'suspicious' },
       { onConflict: 'reporter,reported' }
     );
     if (error) throw error;
@@ -2249,11 +2217,11 @@ function updateBannerOffset() {
 // ══════════════════════════════════════════════════════
 // NEWS NOTICE BANNER + ADMIN APPROVAL (Step 7)
 // ══════════════════════════════════════════════════════
-const ADMIN_EMAILS = ['graciakz91@gmail.com'];
 let newsDismissed = false;
 
+// With passcode access, the passcode holder is the admin.
 function isAdmin() {
-  return !!(currentUser && ADMIN_EMAILS.includes((currentUser.email || '').toLowerCase()));
+  return unlocked;
 }
 
 // Show the most recent admin-approved alert as a public notice banner.
@@ -2299,8 +2267,7 @@ async function loadPendingAlerts() {
   const status = document.getElementById('admin-status');
   const list = document.getElementById('admin-list');
   if (!status || !list) return;
-  if (!currentUser) { status.textContent = 'Sign in as the admin to review alerts.'; list.innerHTML = ''; openLoginModal(); return; }
-  if (!isAdmin()) { status.textContent = '🚫 This account is not an admin.'; list.innerHTML = ''; return; }
+  if (!unlocked) { status.textContent = 'Enter the passcode to review alerts.'; list.innerHTML = ''; openLoginModal(); return; }
   if (!sb) { status.textContent = 'Backend unavailable.'; return; }
   status.textContent = 'Loading…';
   try {
@@ -2344,11 +2311,11 @@ async function setAlertStatus(id, status) {
 // CREATE MEETUP
 // ══════════════════════════════════════════════════════
 function startCreateMeetup() {
-  // Login is required to CREATE a meet-up (joining stays open).
-  if (!currentUser) {
+  // Passcode is required to CREATE a meet-up (joining stays open).
+  if (!unlocked) {
     pendingCreate = true;
     openLoginModal();
-    showToast('🔑 Sign in to create a meet-up');
+    showToast('🔒 Enter the passcode to create a meet-up');
     return;
   }
   pendingLoc = null;
