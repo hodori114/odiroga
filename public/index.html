@@ -1050,16 +1050,17 @@ const PROTEST_ZONES = [
   },
 ];
 
-// XIA 'GRAVITY' booth layout — plaza WEST of KSPO DOME (shown at zoom >= 16).
-// KSPO DOME ≈ 37.5196,127.1225, so all booths sit west (lng < 127.1225).
-// South end (lower lat) = toward Olympic Park Stn; east edge (higher lng) = toward KSPO DOME.
+// XIA 'GRAVITY' booth layout — around the 88 Seoul Olympic Memorial Tower
+// (~37.5198,127.1265), arranged north (MD) → south (Ticket). Shown at zoom >= 16.
+// NOTE: 'md' and 'lightstick' coords are estimated (top of the source paste was
+// truncated); the other four use the exact provided coordinates.
 const XIA_BOOTHS = [
-  { id:'md',         emoji:'🛍️', nameEn:'MD / Merch Booth',          nameKo:'MD(굿즈) 부스',        lat:37.5200, lng:127.1199 },
-  { id:'ticket',     emoji:'🎫', nameEn:'Ticket Booth',              nameKo:'티켓 부스',            lat:37.5202, lng:127.1204 },
-  { id:'pickup',     emoji:'🎟️', nameEn:'Pre-order Verify / Pickup', nameKo:'선예매 인증·현장수령', lat:37.5191, lng:127.1202 }, // 남단(올림픽공원역 방향)
-  { id:'lightstick', emoji:'🔦', nameEn:'Lightstick AS / MD Line',   nameKo:'응원봉 AS·MD줄',       lat:37.5198, lng:127.1214 }, // 동쪽(KSPO DOME 쪽)
-  { id:'info',       emoji:'ℹ️', nameEn:'Info Desk',                 nameKo:'안내 데스크',          lat:37.5199, lng:127.1196 },
-  { id:'water',      emoji:'💧', nameEn:'Water Station',             nameKo:'식수대',               lat:37.5195, lng:127.1197 },
+  { id: 'md',            lat: 37.5202, lng: 127.1265, emoji: '🛍️', nameEn: 'MD / Merch Booth',   nameKo: 'MD(굿즈) 부스', desc: 'Official merch — north end (est.)' },
+  { id: 'lightstick',    lat: 37.5200, lng: 127.1270, emoji: '🔦', nameEn: 'Lightstick Service', nameKo: '응원봉 AS',     desc: 'Lightstick repair & battery service (est. coords)' },
+  { id: 'red-sculpture', lat: 37.5197, lng: 127.1268, emoji: '📍', nameEn: 'Red Sculpture',      nameKo: '빨간 조형물',   desc: 'Landmark — main meeting point' },
+  { id: 'hanryeol',      lat: 37.5195, lng: 127.1275, emoji: '🌳', nameEn: 'Hanryeol Plaza',     nameKo: '한열광장',      desc: 'Open plaza — central gathering area' },
+  { id: 'preorder-check',lat: 37.5192, lng: 127.1262, emoji: '✅', nameEn: 'Pre-order Check',    nameKo: '선예매 인증',   desc: 'Pre-order verification booth' },
+  { id: 'ticket-pickup', lat: 37.5190, lng: 127.1272, emoji: '🎫', nameEn: 'Ticket Pickup',      nameKo: '티켓 현장수령', desc: 'On-site ticket collection — south end' },
 ];
 let boothMarkers = [];
 
