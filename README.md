@@ -55,8 +55,8 @@ Kakao JavaScript key, Supabase URL + anon key, GA4 measurement ID (`G-5XQZJX2QEK
 ## Implementation roadmap
 
 1. ✅ Project structure transition (single HTML → Vercel project)
-2. ⬜ TMAP API (real-time route calculation)
-3. ⬜ Supabase Auth (social login)
+2. ✅ TMAP API (real-time route calculation)
+3. ✅ Supabase Auth (social login)
 4. ⬜ Meetup location picker (Kakao Maps)
 5. ⬜ Live location sharing (Supabase Realtime)
 6. ⬜ Seoul real-time city data (auto safety alerts)

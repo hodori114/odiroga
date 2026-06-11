@@ -329,14 +329,14 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
   display:none;align-items:flex-end;justify-content:center;
 }
 #modal-overlay.open{display:flex}
-#modal{
+#modal,#auth-modal{
   background:var(--white);border-radius:20px 20px 0 0;
   width:100%;max-width:480px;padding:20px 20px 40px;
   animation:slide-up .28s cubic-bezier(.32,1.1,.4,1);
   max-height:92vh;overflow-y:auto;
 }
 @keyframes slide-up{from{transform:translateY(60px);opacity:0}to{transform:none;opacity:1}}
-#modal h2{font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:16px}
+#modal h2,#auth-modal h2{font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:16px}
 .modal-close{
   float:right;width:28px;height:28px;border-radius:50%;
   background:var(--gray-100);border:none;font-size:16px;
@@ -371,6 +371,30 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
   transition:opacity .15s;
 }
 .submit-btn:active{opacity:.85}
+/* Auth (Supabase social login) */
+#auth-overlay{
+  position:fixed;inset:0;z-index:850;
+  background:rgba(0,0,0,.4);backdrop-filter:blur(4px);
+  display:none;align-items:flex-end;justify-content:center;
+}
+#auth-overlay.open{display:flex}
+.oauth-btn{
+  width:100%;padding:12px;margin-top:10px;border-radius:var(--radius);
+  border:1.5px solid var(--gray-200);background:var(--white);
+  font-family:var(--font-display);font-size:14px;font-weight:600;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:10px;color:var(--gray-800);
+  transition:background .15s;
+}
+.oauth-btn:active{background:var(--gray-50)}
+.oauth-btn.apple{background:var(--black);color:var(--white);border-color:var(--black)}
+.oauth-btn svg{width:18px;height:18px}
+#acct-btn{
+  width:30px;height:30px;border-radius:50%;background:var(--gray-100);border:none;
+  font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  color:var(--gray-600);font-weight:700;flex-shrink:0;
+}
+#acct-btn.in{background:var(--black);color:var(--white)}
+.auth-status{font-size:12px;color:var(--gray-600);margin:6px 0 2px;text-align:center}
 
 /* ── TOAST ────────────────────────────────────────── */
 #toast{
@@ -566,6 +590,8 @@ function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 gtag('config', 'G-5XQZJX2QEK');
 </script>
+<!-- Supabase JS (Auth + Realtime) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -596,7 +622,10 @@ gtag('config', 'G-5XQZJX2QEK');
   <!-- Panel header with close -->
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 0;flex-shrink:0">
     <div style="font-family:var(--font-display);font-size:13px;font-weight:700;color:var(--black)">odiroga<span style="color:var(--accent)">.</span></div>
-    <button onclick="togglePanel()" style="width:28px;height:28px;border-radius:50%;background:var(--gray-100);border:none;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--gray-600)" title="Close panel">✕</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button id="acct-btn" onclick="openLoginModal()" title="Account">👤</button>
+      <button onclick="togglePanel()" style="width:28px;height:28px;border-radius:50%;background:var(--gray-100);border:none;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--gray-600)" title="Close panel">✕</button>
+    </div>
   </div>
 
   <!-- Concert pills -->
@@ -684,6 +713,33 @@ gtag('config', 'G-5XQZJX2QEK');
   </div>
 </div>
 
+<!-- LOGIN / ACCOUNT MODAL -->
+<div id="auth-overlay" onclick="closeLoginModal(event)">
+  <div id="auth-modal">
+    <button class="modal-close" onclick="closeLoginModal()">✕</button>
+    <h2 id="auth-title">Sign in 🔑</h2>
+    <p style="font-size:12px;color:var(--gray-600);margin:-8px 0 14px;line-height:1.5">
+      Sign in to <strong>create</strong> a meet-up. Joining a meet-up still works without an account.
+    </p>
+    <div id="auth-loggedout">
+      <button class="oauth-btn" onclick="signInWithProvider('google')">
+        <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.2 13.5 17.6 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.5c-.5 2.9-2.2 5.3-4.7 7l7.2 5.6c4.2-3.9 6.6-9.6 6.6-16.1z"/><path fill="#FBBC05" d="M10.4 28.3c-.5-1.4-.8-2.9-.8-4.3s.3-3 .8-4.3l-7.8-6.1C1 16.5 0 20.1 0 24s1 7.5 2.6 10.4l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.2-5.6c-2 1.3-4.6 2.1-8.7 2.1-6.4 0-11.8-4-13.6-9.7l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
+        Continue with Google
+      </button>
+      <button class="oauth-btn apple" onclick="signInWithProvider('apple')">
+        <svg viewBox="0 0 24 24" fill="#fff"><path d="M16.4 1.6c0 1.1-.4 2.2-1.2 3-.8.9-2 1.6-3.1 1.5-.1-1.1.4-2.2 1.1-3 .8-.9 2.1-1.5 3.2-1.5zM20 17.1c-.5 1.2-.8 1.7-1.4 2.8-.9 1.5-2.2 3.3-3.8 3.3-1.4 0-1.8-.9-3.7-.9s-2.4.9-3.7.9c-1.6 0-2.8-1.7-3.7-3.1C1.2 16.1.9 11.4 2.5 8.9c1-1.6 2.6-2.5 4.1-2.5 1.6 0 2.6 1 3.9 1s2.1-1 3.9-1c1.4 0 2.8.7 3.8 2-3.3 1.8-2.8 6.5.8 7.7z"/></svg>
+        Continue with Apple
+      </button>
+    </div>
+    <div id="auth-loggedin" style="display:none">
+      <div class="auth-status" id="auth-email"></div>
+      <div class="auth-status" id="auth-artist" style="margin-bottom:12px"></div>
+      <button class="submit-btn" onclick="startCreateMeetup()">＋ Create a Meet-up</button>
+      <button class="oauth-btn" onclick="signOut()" style="margin-top:10px">Sign out</button>
+    </div>
+  </div>
+</div>
+
 <!-- ONBOARDING MODAL -->
 <div id="onboarding">
   <div id="onboarding-box">
@@ -714,6 +770,10 @@ gtag('config', 'G-5XQZJX2QEK');
 // ══════════════════════════════════════════════════════
 // DATA
 // ══════════════════════════════════════════════════════
+
+// Supabase (client-safe keys: anon key + URL are meant to be public)
+const SUPABASE_URL = 'https://vgelzvzgepqkgfaeogvo.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZnZWx6dnpnZXBxa2dmYWVvZ3ZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExNjI0MTAsImV4cCI6MjA5NjczODQxMH0.8-F_tOOSV28WezjDANkj8WHsdSdvDwmN4eNanaVpTZA';
 
 const CONCERTS = {
   bts: {
@@ -926,6 +986,11 @@ let meetupMarkerObjs = [];
 let myHotel = null;
 let hotelMarker = null;
 
+// Auth state (Supabase)
+let sb = null;              // Supabase client
+let currentUser = null;     // logged-in user object, or null
+let pendingCreate = false;  // user tried to create a meetup before logging in
+
 // ══════════════════════════════════════════════════════
 // HOTEL ZONES DATA
 // ══════════════════════════════════════════════════════
@@ -1073,6 +1138,8 @@ function selectConcert(id) {
   const sheet = document.getElementById('sheet');
   if (sheet.classList.contains('hidden')) togglePanel();
   showToast(`${c.emoji} ${c.name} selected`);
+  // Keep the logged-in user's followed-artist tag in sync.
+  if (currentUser) { saveProfileArtist(id); updateAuthUI(); }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1531,9 +1598,115 @@ function toggleRoutes() {
 }
 
 // ══════════════════════════════════════════════════════
+// AUTH (Supabase social login)
+// ══════════════════════════════════════════════════════
+function initAuth() {
+  if (!window.supabase || !window.supabase.createClient) {
+    console.warn('Supabase library not loaded — auth disabled, app still works.');
+    return;
+  }
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // Restore an existing session, then react to future changes.
+  sb.auth.getSession().then(({ data }) => setUser(data?.session?.user || null));
+  sb.auth.onAuthStateChange((_event, session) => {
+    const wasLoggedOut = !currentUser;
+    setUser(session?.user || null);
+    // Just signed in: save artist tag, and resume a pending create if any.
+    if (wasLoggedOut && currentUser) {
+      saveProfileArtist(currentConcert);
+      if (pendingCreate) {
+        pendingCreate = false;
+        closeLoginModal();
+        startCreateMeetup();
+      }
+    }
+  });
+}
+
+function setUser(user) {
+  currentUser = user;
+  updateAuthUI();
+}
+
+function updateAuthUI() {
+  const btn = document.getElementById('acct-btn');
+  const out = document.getElementById('auth-loggedout');
+  const inn = document.getElementById('auth-loggedin');
+  const title = document.getElementById('auth-title');
+  if (currentUser) {
+    const initial = (currentUser.email || '?').trim().charAt(0).toUpperCase();
+    if (btn) { btn.textContent = initial; btn.classList.add('in'); }
+    if (out) out.style.display = 'none';
+    if (inn) inn.style.display = 'block';
+    if (title) title.textContent = 'Your account 👤';
+    const em = document.getElementById('auth-email');
+    const ar = document.getElementById('auth-artist');
+    if (em) em.textContent = currentUser.email || 'Signed in';
+    if (ar) ar.textContent = `Following: ${currentConcert ? currentConcert.toUpperCase() : '—'}`;
+  } else {
+    if (btn) { btn.textContent = '👤'; btn.classList.remove('in'); }
+    if (out) out.style.display = 'block';
+    if (inn) inn.style.display = 'none';
+    if (title) title.textContent = 'Sign in 🔑';
+  }
+}
+
+function openLoginModal() {
+  updateAuthUI();
+  const sheet = document.getElementById('sheet');
+  if (sheet && sheet.classList.contains('hidden')) togglePanel();
+  document.getElementById('auth-overlay').classList.add('open');
+}
+function closeLoginModal(e) {
+  if (e && e.target !== document.getElementById('auth-overlay')) return;
+  document.getElementById('auth-overlay').classList.remove('open');
+}
+
+async function signInWithProvider(provider) {
+  if (!sb) { showToast('⚠️ Login unavailable right now'); return; }
+  gtag('event', 'login', { method: provider });
+  // Return to the same artist path (/bts, /xia) after the OAuth round-trip.
+  const redirectTo = window.location.origin + window.location.pathname + window.location.search;
+  const { error } = await sb.auth.signInWithOAuth({ provider, options: { redirectTo } });
+  if (error) { showToast(`⚠️ ${error.message}`); console.error(error); }
+}
+
+async function signOut() {
+  if (!sb) return;
+  await sb.auth.signOut();
+  setUser(null);
+  closeLoginModal();
+  showToast('Signed out');
+}
+
+// Save which artist the user follows to their profile row.
+async function saveProfileArtist(artist) {
+  if (!sb || !currentUser || !artist) return;
+  try {
+    await sb.from('profiles').upsert({
+      id: currentUser.id,
+      email: currentUser.email,
+      artist: artist.toUpperCase(),
+    }, { onConflict: 'id' });
+  } catch (e) {
+    console.warn('profile upsert failed (table/policy may be missing):', e?.message || e);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', initAuth);
+
+// ══════════════════════════════════════════════════════
 // CREATE MEETUP
 // ══════════════════════════════════════════════════════
 function startCreateMeetup() {
+  // Login is required to CREATE a meet-up (joining stays open).
+  if (!currentUser) {
+    pendingCreate = true;
+    openLoginModal();
+    showToast('🔑 Sign in to create a meet-up');
+    return;
+  }
   pendingLoc = null;
   document.getElementById('mi-name').value = '';
   document.getElementById('mi-note').value = '';
