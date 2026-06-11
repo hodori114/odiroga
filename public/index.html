@@ -372,12 +372,29 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
 }
 .submit-btn:active{opacity:.85}
 /* Auth (Supabase social login) */
-#auth-overlay{
+#auth-overlay,#live-overlay{
   position:fixed;inset:0;z-index:850;
   background:rgba(0,0,0,.4);backdrop-filter:blur(4px);
   display:none;align-items:flex-end;justify-content:center;
 }
-#auth-overlay.open{display:flex}
+#auth-overlay.open,#live-overlay.open{display:flex}
+/* Live sharing list */
+.live-item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 11px;border:1px solid var(--gray-100);border-radius:var(--radius-sm);
+  margin-bottom:6px;
+}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#34c759;flex-shrink:0;
+  box-shadow:0 0 0 3px rgba(52,199,89,.18)}
+.live-info{flex:1;min-width:0}
+.live-nick{font-size:12px;font-weight:600;color:var(--gray-800);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.live-zone{font-size:10px;color:var(--gray-500);margin-top:1px}
+.live-report{
+  border:1px solid var(--gray-200);background:var(--white);border-radius:14px;
+  font-size:10px;font-weight:600;color:var(--gray-600);padding:4px 9px;cursor:pointer;flex-shrink:0;
+}
+.live-report:active{background:var(--gray-50)}
+#live-toggle.on{background:#c62828}
 .oauth-btn{
   width:100%;padding:12px;margin-top:10px;border-radius:var(--radius);
   border:1.5px solid var(--gray-200);background:var(--white);
@@ -642,6 +659,7 @@ gtag('config', 'G-5XQZJX2QEK');
 <div id="map-btns">
   <div class="map-btn" id="btn-heatmap" onclick="toggleHeatmap()" title="Fan heatmap">🔥</div>
   <div class="map-btn" id="btn-routes" onclick="toggleRoutes()" title="Show routes">✈️</div>
+  <div class="map-btn" id="btn-live" onclick="openLiveModal()" title="Live location sharing">📡</div>
 </div>
 
 <!-- RIGHT SIDE PANEL -->
@@ -780,6 +798,21 @@ gtag('config', 'G-5XQZJX2QEK');
   </div>
 </div>
 
+<!-- LIVE LOCATION SHARING MODAL -->
+<div id="live-overlay" onclick="closeLiveModal(event)">
+  <div id="auth-modal">
+    <button class="modal-close" onclick="closeLiveModal()">✕</button>
+    <h2>📡 Live nearby</h2>
+    <p style="font-size:12px;color:var(--gray-600);margin:-8px 0 12px;line-height:1.5">
+      Share your <strong>zone</strong> (e.g. "Terminal 1") with fans heading to the same place.
+      Exact GPS is never shared. Opens only ±3h around showtime.
+    </p>
+    <div id="live-status" class="auth-status" style="margin-bottom:10px"></div>
+    <button class="submit-btn" id="live-toggle" onclick="toggleLiveShare()">📡 Share my location</button>
+    <div id="live-list" style="margin-top:14px"></div>
+  </div>
+</div>
+
 <!-- ONBOARDING MODAL -->
 <div id="onboarding">
   <div id="onboarding-box">
@@ -831,6 +864,41 @@ const CONCERTS = {
     ticketUrl:'https://tickets.interpark.com',
   },
 };
+
+// Show start times (KST). Live sharing only opens within ±3h of any of these.
+const SHOW_TIMES = {
+  bts: ['2026-06-12T19:00:00+09:00', '2026-06-13T19:00:00+09:00'],
+  xia: ['2026-06-12T19:00:00+09:00', '2026-06-13T19:00:00+09:00', '2026-06-14T19:00:00+09:00'],
+};
+const LIVE_WINDOW_MS = 3 * 60 * 60 * 1000;
+
+// Coarse zones per place. We share ONLY the zone label (e.g. "Terminal 1"),
+// never raw GPS. A user is "at" a place if within PLACE_RADIUS_M of its center;
+// then we snap to the nearest named zone. Zone coords are approximate.
+const PLACE_RADIUS_M = 4000;
+const LIVE_PLACES = [
+  { id:'ICN', name:'Incheon Airport', artists:['bts','xia'], lat:37.4602, lng:126.4407, zones:[
+    { label:'Terminal 1', lat:37.4490, lng:126.4505 },
+    { label:'Terminal 2', lat:37.4691, lng:126.4216 },
+    { label:'Bus & Taxi Plaza', lat:37.4480, lng:126.4520 },
+  ]},
+  { id:'GMP', name:'Gimpo Airport', artists:['bts','xia'], lat:37.5586, lng:126.7906, zones:[
+    { label:'Domestic Terminal', lat:37.5560, lng:126.7910 },
+    { label:'International Terminal', lat:37.5630, lng:126.8010 },
+  ]},
+  { id:'PUS', name:'Gimhae Airport', artists:['bts'], lat:35.1796, lng:128.9384, zones:[
+    { label:'Arrivals', lat:35.1796, lng:128.9384 },
+  ]},
+  { id:'venue-xia', name:'KSPO DOME', artists:['xia'], lat:37.5196, lng:127.1225, zones:[
+    { label:'Main Gate', lat:37.5196, lng:127.1225 },
+    { label:'Olympic Park Stn Exit 3', lat:37.5160, lng:127.1305 },
+    { label:'Peace Square', lat:37.5210, lng:127.1190 },
+  ]},
+  { id:'venue-bts', name:'Busan Asiad Stadium', artists:['bts'], lat:35.2094, lng:129.0728, zones:[
+    { label:'Main Gate', lat:35.2094, lng:129.0728 },
+    { label:'Sports Complex Stn', lat:35.2155, lng:129.0690 },
+  ]},
+];
 
 const AIRPORTS = [
   {
@@ -1824,6 +1892,193 @@ function useMyLocation() {
     { enableHighAccuracy: true, timeout: 8000 }
   );
 }
+
+// ══════════════════════════════════════════════════════
+// LIVE LOCATION SHARING (Supabase Realtime Presence)
+// Safety: same artist + same place only (channel scope); ±3h window;
+// coarse zone labels only (no raw GPS leaves the device); report -> auto-block at 3.
+// ══════════════════════════════════════════════════════
+let liveChannel = null;
+let liveSharing = false;
+let liveBlocked = new Set();   // user ids with >=3 reports
+let liveMyPlace = null;        // {id,name,...}
+let liveMyZone = null;         // zone label string
+
+function geoDistM(la1, lo1, la2, lo2) {
+  const R = 6371000, toR = Math.PI / 180;
+  const dLa = (la2 - la1) * toR, dLo = (lo2 - lo1) * toR;
+  const a = Math.sin(dLa / 2) ** 2 + Math.cos(la1 * toR) * Math.cos(la2 * toR) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// Is the ±3h live window open now for the current artist?
+function liveWindowState() {
+  const times = SHOW_TIMES[currentConcert] || [];
+  const now = Date.now();
+  for (const t of times) {
+    if (Math.abs(now - new Date(t).getTime()) <= LIVE_WINDOW_MS) return { open: true, msg: '' };
+  }
+  return { open: false, msg: 'Live sharing opens 3 hours before each show.' };
+}
+
+// Snap GPS to nearest relevant place + nearest zone. Returns null if not near one.
+function snapToZone(lat, lng) {
+  let best = null, bestD = Infinity;
+  for (const p of LIVE_PLACES) {
+    if (!p.artists.includes(currentConcert)) continue;
+    const d = geoDistM(lat, lng, p.lat, p.lng);
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  if (!best || bestD > PLACE_RADIUS_M) return null;
+  let zone = best.zones[0]?.label || best.name, zD = Infinity;
+  for (const z of best.zones) {
+    const d = geoDistM(lat, lng, z.lat, z.lng);
+    if (d < zD) { zD = d; zone = z.label; }
+  }
+  return { place: best, zone };
+}
+
+function liveNick() {
+  const u = currentUser;
+  return (u?.user_metadata?.full_name || u?.user_metadata?.name || u?.email?.split('@')[0] || 'Fan').slice(0, 24);
+}
+
+async function loadBlocked() {
+  liveBlocked = new Set();
+  if (!sb) return;
+  try {
+    const { data } = await sb.from('blocked_users').select('user_id');
+    (data || []).forEach(r => liveBlocked.add(r.user_id));
+  } catch (e) { /* view may be missing — ignore */ }
+}
+
+function openLiveModal() {
+  if (!currentUser) { openLoginModal(); showToast('🔑 Sign in to use live sharing'); return; }
+  const sheet = document.getElementById('sheet');
+  if (sheet && sheet.classList.contains('hidden')) togglePanel();
+  document.getElementById('live-overlay').classList.add('open');
+  refreshLiveStatus();
+  loadBlocked().then(refreshLiveStatus);
+}
+function closeLiveModal(e) {
+  if (e && e.target !== document.getElementById('live-overlay')) return;
+  document.getElementById('live-overlay').classList.remove('open');
+}
+
+function refreshLiveStatus() {
+  const st = document.getElementById('live-status');
+  const btn = document.getElementById('live-toggle');
+  if (!st || !btn) return;
+  const win = liveWindowState();
+  const blockedSelf = currentUser && liveBlocked.has(currentUser.id);
+  if (blockedSelf) st.textContent = '🚫 Your sharing is disabled (multiple reports).';
+  else if (!win.open) st.textContent = '⏳ ' + win.msg;
+  else if (liveSharing) st.textContent = `📡 Sharing as "${liveMyZone}" · ${liveMyPlace?.name || ''}`;
+  else st.textContent = 'Window open. Tap below to share your zone.';
+  btn.textContent = liveSharing ? '⏹ Stop sharing' : '📡 Share my location';
+  btn.classList.toggle('on', liveSharing);
+  btn.disabled = (!win.open || blockedSelf) && !liveSharing;
+  btn.style.opacity = btn.disabled ? '.5' : '1';
+}
+
+async function toggleLiveShare() {
+  if (liveSharing) { stopLiveShare(); return; }
+  if (!sb) { showToast('⚠️ Live unavailable'); return; }
+  await loadBlocked();
+  if (currentUser && liveBlocked.has(currentUser.id)) { refreshLiveStatus(); return; }
+  if (!liveWindowState().open) { refreshLiveStatus(); return; }
+  if (!navigator.geolocation) { showToast('⚠️ GPS not supported'); return; }
+  showToast('📍 Finding your zone…');
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const snap = snapToZone(pos.coords.latitude, pos.coords.longitude);
+    if (!snap) { showToast('⚠️ You are not near a venue/airport for this artist'); return; }
+    liveMyPlace = snap.place; liveMyZone = snap.zone;
+    await joinLiveChannel();
+  }, err => { showToast('⚠️ Could not get your location'); console.warn(err); },
+  { enableHighAccuracy: true, timeout: 8000 });
+}
+
+async function joinLiveChannel() {
+  await leaveLiveChannel();
+  // Channel name scopes to artist + place → only same-artist, same-place fans meet.
+  const name = `live:${currentConcert}:${liveMyPlace.id}`;
+  liveChannel = sb.channel(name, { config: { presence: { key: currentUser.id } } });
+  liveChannel.on('presence', { event: 'sync' }, renderLiveList);
+  liveChannel.subscribe(async status => {
+    if (status === 'SUBSCRIBED') {
+      // Only the coarse zone label is broadcast — never raw coordinates.
+      await liveChannel.track({ uid: currentUser.id, nick: liveNick(), zone: liveMyZone, place: liveMyPlace.name });
+      liveSharing = true;
+      gtag('event', 'live_share_start', { artist: currentConcert.toUpperCase(), place: liveMyPlace.id });
+      refreshLiveStatus();
+      renderLiveList();
+    }
+  });
+}
+
+async function leaveLiveChannel() {
+  if (!liveChannel) return;
+  try { await liveChannel.untrack(); } catch (e) {}
+  try { await sb.removeChannel(liveChannel); } catch (e) {}
+  liveChannel = null;
+}
+
+async function stopLiveShare() {
+  await leaveLiveChannel();
+  liveSharing = false;
+  refreshLiveStatus();
+  const box = document.getElementById('live-list');
+  if (box) box.innerHTML = '';
+}
+
+function renderLiveList() {
+  const box = document.getElementById('live-list');
+  if (!box) return;
+  if (!liveChannel || !liveSharing) { box.innerHTML = ''; return; }
+  const people = [];
+  Object.values(liveChannel.presenceState()).forEach(arr => arr.forEach(p => people.push(p)));
+  const others = people.filter(p => p.uid && p.uid !== currentUser.id && !liveBlocked.has(p.uid));
+  if (!others.length) {
+    box.innerHTML = '<div class="auth-status">No one else sharing here yet. Hang tight! 💜</div>';
+    return;
+  }
+  box.innerHTML =
+    `<div class="auth-status" style="text-align:left;margin-bottom:6px">👥 ${others.length} fan(s) near you</div>` +
+    others.map(p => `
+      <div class="live-item">
+        <span class="live-dot"></span>
+        <div class="live-info">
+          <div class="live-nick">${escapeHtml(p.nick || 'Fan')}</div>
+          <div class="live-zone">📍 ${escapeHtml(p.zone || p.place || 'nearby')}</div>
+        </div>
+        <button class="live-report" onclick="reportUser('${escapeHtml(p.uid)}')">🚩 Report</button>
+      </div>`).join('');
+}
+
+async function reportUser(uid) {
+  if (!sb || !currentUser || !uid) return;
+  try {
+    const { error } = await sb.from('reports').upsert(
+      { reporter: currentUser.id, reported: uid, reason: 'suspicious' },
+      { onConflict: 'reporter,reported' }
+    );
+    if (error) throw error;
+    gtag('event', 'report_user', { artist: currentConcert.toUpperCase() });
+    showToast('🚩 Reported. Thanks for keeping fans safe.');
+    await loadBlocked();
+    renderLiveList();
+  } catch (e) {
+    showToast('⚠️ Could not submit report');
+    console.warn(e);
+  }
+}
+
+// Leave the channel cleanly when the page closes.
+window.addEventListener('beforeunload', () => { if (liveChannel) leaveLiveChannel(); });
 
 // ══════════════════════════════════════════════════════
 // CREATE MEETUP
