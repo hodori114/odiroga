@@ -1050,14 +1050,16 @@ const PROTEST_ZONES = [
   },
 ];
 
-// XIA 'GRAVITY' booth / facility layout around KSPO DOME (shown at zoom >= 16).
+// XIA 'GRAVITY' booth layout — plaza WEST of KSPO DOME (shown at zoom >= 16).
+// KSPO DOME ≈ 37.5196,127.1225, so all booths sit west (lng < 127.1225).
+// South end (lower lat) = toward Olympic Park Stn; east edge (higher lng) = toward KSPO DOME.
 const XIA_BOOTHS = [
-  { id:'merch',   emoji:'🛍️', nameEn:'Official Merch Booth', nameKo:'공식 굿즈 부스', lat:37.5203, lng:127.1231 },
-  { id:'photo',   emoji:'📸', nameEn:'Photo Zone',           nameKo:'포토존',         lat:37.5189, lng:127.1233 },
-  { id:'food',    emoji:'🍔', nameEn:'Food Trucks',          nameKo:'푸드트럭',       lat:37.5198, lng:127.1242 },
-  { id:'info',    emoji:'ℹ️', nameEn:'Info Desk',            nameKo:'안내 데스크',     lat:37.5194, lng:127.1216 },
-  { id:'water',   emoji:'💧', nameEn:'Water Station',        nameKo:'식수대',         lat:37.5187, lng:127.1223 },
-  { id:'fanclub', emoji:'❤️', nameEn:'Fan Club Booth',       nameKo:'팬클럽 부스',     lat:37.5206, lng:127.1220 },
+  { id:'md',         emoji:'🛍️', nameEn:'MD / Merch Booth',          nameKo:'MD(굿즈) 부스',        lat:37.5200, lng:127.1199 },
+  { id:'ticket',     emoji:'🎫', nameEn:'Ticket Booth',              nameKo:'티켓 부스',            lat:37.5202, lng:127.1204 },
+  { id:'pickup',     emoji:'🎟️', nameEn:'Pre-order Verify / Pickup', nameKo:'선예매 인증·현장수령', lat:37.5191, lng:127.1202 }, // 남단(올림픽공원역 방향)
+  { id:'lightstick', emoji:'🔦', nameEn:'Lightstick AS / MD Line',   nameKo:'응원봉 AS·MD줄',       lat:37.5198, lng:127.1214 }, // 동쪽(KSPO DOME 쪽)
+  { id:'info',       emoji:'ℹ️', nameEn:'Info Desk',                 nameKo:'안내 데스크',          lat:37.5199, lng:127.1196 },
+  { id:'water',      emoji:'💧', nameEn:'Water Station',             nameKo:'식수대',               lat:37.5195, lng:127.1197 },
 ];
 let boothMarkers = [];
 
