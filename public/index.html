@@ -469,6 +469,19 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
   font-size:15px;line-height:1;box-shadow:0 2px 5px rgba(0,0,0,.35);
 }
 .poi-btn.active{background:var(--black);color:#fff}
+/* XIA booth markers */
+.booth-marker{display:flex;flex-direction:column;align-items:center}
+.booth-marker .bm-pin{
+  width:32px;height:32px;border-radius:50%;
+  background:#fff;border:2.5px solid #e8005a;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;line-height:1;box-shadow:0 2px 5px rgba(0,0,0,.3);
+}
+.booth-marker .bm-label{
+  margin-top:2px;font-size:9px;font-weight:700;
+  background:#e8005a;color:#fff;padding:1px 6px;border-radius:8px;
+  white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.25);
+}
 #gps-btn{
   width:100%;padding:10px;margin-top:8px;border-radius:var(--radius-sm);
   border:1.5px solid var(--gray-200);background:var(--white);
@@ -996,6 +1009,17 @@ const PROTEST_ZONES = [
   },
 ];
 
+// XIA 'GRAVITY' booth / facility layout around KSPO DOME (shown at zoom >= 16).
+const XIA_BOOTHS = [
+  { id:'merch',   emoji:'🛍️', nameEn:'Official Merch Booth', nameKo:'공식 굿즈 부스', lat:37.5203, lng:127.1231 },
+  { id:'photo',   emoji:'📸', nameEn:'Photo Zone',           nameKo:'포토존',         lat:37.5189, lng:127.1233 },
+  { id:'food',    emoji:'🍔', nameEn:'Food Trucks',          nameKo:'푸드트럭',       lat:37.5198, lng:127.1242 },
+  { id:'info',    emoji:'ℹ️', nameEn:'Info Desk',            nameKo:'안내 데스크',     lat:37.5194, lng:127.1216 },
+  { id:'water',   emoji:'💧', nameEn:'Water Station',        nameKo:'식수대',         lat:37.5187, lng:127.1223 },
+  { id:'fanclub', emoji:'❤️', nameEn:'Fan Club Booth',       nameKo:'팬클럽 부스',     lat:37.5206, lng:127.1220 },
+];
+let boothMarkers = [];
+
 const AIRPORTS = [
   {
     id:'ICN', name:'Incheon Intl', code:'ICN',
@@ -1290,6 +1314,9 @@ function initMap() {
     if (showHeatmap) drawHeatmap();
     if (activePOI.size) { clearTimeout(poiTimer); poiTimer = setTimeout(fetchPOIs, 600); }
   });
+  // XIA booth markers: show/hide based on zoom level.
+  map.on('zoomend', renderBoothMarkers);
+  renderBoothMarkers();
   window.addEventListener('resize', () => {
     if (showHeatmap) drawHeatmap();
   });
@@ -1677,6 +1704,34 @@ function renderVenueMarkers() {
     const m = L.marker([v.lat, v.lng], { icon }).addTo(map);
     m.on('click', () => map.flyTo([v.lat, v.lng], 15));
     venueMarkers.push(m);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// XIA BOOTH MARKERS (KSPO DOME) — show only for XIA at zoom >= 16
+// ══════════════════════════════════════════════════════
+function renderBoothMarkers() {
+  // Always clear first so switching artist / zooming out removes them.
+  boothMarkers.forEach(m => map.removeLayer(m));
+  boothMarkers = [];
+  if (currentConcert !== 'xia') return;     // hide for BTS
+  if (map.getZoom() < 16) return;            // hide when zoomed out
+  XIA_BOOTHS.forEach(b => {
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="booth-marker"><div class="bm-pin">${b.emoji}</div><div class="bm-label">${b.nameEn}</div></div>`,
+      iconSize: [90, 46], iconAnchor: [45, 16],
+    });
+    const m = L.marker([b.lat, b.lng], { icon }).addTo(map);
+    m.bindPopup(`<strong>${b.emoji} ${b.nameEn}</strong><br>${b.nameKo}`);
+    m.on('click', () => {
+      gtag('event', 'click_booth', {
+        booth_id: b.id,
+        booth_name: b.nameEn,
+        artist: 'XIA',
+      });
+    });
+    boothMarkers.push(m);
   });
 }
 
