@@ -33,8 +33,12 @@ const LEVEL_MAP = {
   '붐빔':      { en: 'Crowded',       rank: 4 },
 };
 
+// Env var wins; falls back to the provided Seoul Open Data key so the safety
+// feature works without a dashboard step. Move to env + rotate when convenient.
+const SEOUL_KEY_FALLBACK = '7a7345794967726138387970697368';
+
 export default async function handler(req, res) {
-  const key = process.env.SEOUL_API_KEY_KO;
+  const key = process.env.SEOUL_API_KEY_KO || SEOUL_KEY_FALLBACK;
   if (!key) {
     return res.status(500).json({ error: 'config', message: 'SEOUL_API_KEY_KO is not set on the server.' });
   }
