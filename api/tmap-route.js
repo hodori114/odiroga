@@ -22,7 +22,7 @@ function num(v) {
 }
 
 export default async function handler(req, res) {
-  const appKey = process.env.TMAP_APPKEY;
+  const appKey = process.env.TMAP_APPKEY || 'J5KEjdFjI61ZVncCq1b2h8VWuZc507Yk3layV2e7';
   if (!appKey) {
     return res.status(500).json({ error: 'config', message: 'TMAP_APPKEY is not set on the server.' });
   }
