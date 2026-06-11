@@ -1,6 +1,13 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     { "source": "/bts", "destination": "/index.html" },
-    { "source": "/xia", "destination": "/index.html" }
-  ]
+    { "source": "/xia", "destination": "/index.html" },
+    { "source": "/admin", "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/*.js": {
+      "maxDuration": 10
+    }
+  }
 }
