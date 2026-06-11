@@ -1525,11 +1525,12 @@ function loadTraffic(el, qs) {
     .then(d => {
       if (!el.isConnected) return;
       if (d.congested) {
+        const road = d.worstRoad ? ` (${escapeHtml(d.worstRoad)})` : '';
         el.innerHTML =
-          `<span class="chip" style="background:#ffebee;color:#c62828;font-weight:700">⚠️ Heavy traffic: ${d.label}</span>` +
-          ` <small style="color:var(--gray-500)">Leave earlier — roads near the venue are ${d.label.toLowerCase()}.</small>`;
+          `<span class="chip" style="background:#ffebee;color:#c62828;font-weight:700">⚠️ Heavy traffic near venue: ${d.label}</span>` +
+          ` <small style="color:var(--gray-500)">Leave earlier — roads near the venue are ${d.label.toLowerCase()}${road}.</small>`;
       } else if (d.level >= 1) {
-        el.innerHTML = `<span class="chip" style="background:#e8f5e9;color:#2e7d32">🟢 Traffic: ${d.label}</span>`;
+        el.innerHTML = `<span class="chip" style="background:#e8f5e9;color:#2e7d32">🟢 Traffic near venue: ${d.label}</span>`;
       }
     })
     .catch(() => { /* traffic is best-effort; stay silent on failure */ });
