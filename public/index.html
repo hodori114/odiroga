@@ -461,7 +461,13 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
   margin-top:8px;background:var(--gray-100);overflow:hidden;
 }
 .pick-pin{font-size:24px;line-height:1;text-align:center;background:none;border:none}
-.toilet-pin{font-size:18px;line-height:1;text-align:center;background:none;border:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
+.poi-marker{
+  width:28px;height:28px;border-radius:50%;
+  background:#fff;border:3px solid #333;
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;line-height:1;box-shadow:0 2px 5px rgba(0,0,0,.35);
+}
+.poi-btn.active{background:var(--black);color:#fff}
 #gps-btn{
   width:100%;padding:10px;margin-top:8px;border-radius:var(--radius-sm);
   border:1.5px solid var(--gray-200);background:var(--white);
@@ -702,7 +708,11 @@ gtag('config', 'G-5XQZJX2QEK');
   <div class="map-btn" id="btn-heatmap" onclick="toggleHeatmap()" title="Fan heatmap">🔥</div>
   <div class="map-btn" id="btn-routes" onclick="toggleRoutes()" title="Show routes">✈️</div>
   <div class="map-btn" id="btn-live" onclick="openLiveModal()" title="Live location sharing">📡</div>
-  <div class="map-btn" id="btn-toilets" onclick="toggleToilets()" title="Nearby restrooms">🚻</div>
+  <div class="map-btn poi-btn" data-cat="toilets" onclick="togglePOI('toilets')" title="Restrooms">🚻</div>
+  <div class="map-btn poi-btn" data-cat="store" onclick="togglePOI('store')" title="Convenience stores">🏪</div>
+  <div class="map-btn poi-btn" data-cat="atm" onclick="togglePOI('atm')" title="ATMs">🏧</div>
+  <div class="map-btn poi-btn" data-cat="cafe" onclick="togglePOI('cafe')" title="Cafes">☕</div>
+  <div class="map-btn poi-btn" data-cat="subway" onclick="togglePOI('subway')" title="Subway stations / exits">🚇</div>
 </div>
 
 <!-- RIGHT SIDE PANEL -->
@@ -1158,10 +1168,10 @@ let meetupMarkerObjs = [];
 let myHotel = null;
 let hotelMarker = null;
 
-// Nearby restrooms (OpenStreetMap Overpass, keyless)
-let showToilets = false;
-let toiletMarkers = [];
-let toiletTimer = null;
+// Nearby places (OpenStreetMap Overpass, keyless)
+let activePOI = new Set();   // active category keys
+let poiMarkers = [];
+let poiTimer = null;
 
 // Access state (passcode unlock + anonymous local identity)
 const MEETUP_PASSCODE = 'COCONUT1215';
@@ -1252,7 +1262,7 @@ function initMap() {
 
   map.on('moveend zoomend', () => {
     if (showHeatmap) drawHeatmap();
-    if (showToilets) { clearTimeout(toiletTimer); toiletTimer = setTimeout(fetchToilets, 600); }
+    if (activePOI.size) { clearTimeout(poiTimer); poiTimer = setTimeout(fetchPOIs, 600); }
   });
   window.addEventListener('resize', () => {
     if (showHeatmap) drawHeatmap();
@@ -1785,25 +1795,73 @@ function toggleRoutes() {
 }
 
 // ══════════════════════════════════════════════════════
-// NEARBY RESTROOMS (OpenStreetMap Overpass API — keyless)
+// NEARBY PLACES (OpenStreetMap Overpass API — keyless)
+// Restrooms, convenience stores, ATMs, cafes, subway entrances.
 // ══════════════════════════════════════════════════════
-function toggleToilets() {
-  showToilets = !showToilets;
-  document.getElementById('btn-toilets').classList.toggle('active', showToilets);
-  if (showToilets) { fetchToilets(); }
-  else { clearToilets(); showToast('🚻 Restrooms hidden'); }
+const POI_CATEGORIES = {
+  toilets: { emoji: '🚻', label: 'Restroom', color: '#2e7d32',
+    filters: ['node["amenity"="toilets"]', 'way["amenity"="toilets"]'] },
+  store:   { emoji: '🏪', label: 'Store', color: '#ef6c00',
+    filters: ['node["shop"="convenience"]', 'way["shop"="convenience"]'] },
+  atm:     { emoji: '🏧', label: 'ATM', color: '#1565c0',
+    filters: ['node["amenity"="atm"]', 'node["amenity"="bank"]["atm"="yes"]'] },
+  cafe:    { emoji: '☕', label: 'Cafe', color: '#6d4c41',
+    filters: ['node["amenity"="cafe"]', 'way["amenity"="cafe"]'] },
+  subway:  { emoji: '🚇', label: 'Subway', color: '#5e35b1',
+    filters: ['node["railway"="subway_entrance"]', 'node["railway"="station"]["station"="subway"]'] },
+};
+
+function classifyPOI(t) {
+  if (t.amenity === 'toilets') return 'toilets';
+  if (t.shop === 'convenience') return 'store';
+  if (t.amenity === 'atm' || (t.amenity === 'bank' && t.atm === 'yes')) return 'atm';
+  if (t.amenity === 'cafe') return 'cafe';
+  if (t.railway === 'subway_entrance' || (t.railway === 'station' && t.station === 'subway')) return 'subway';
+  return null;
 }
 
-function clearToilets() {
-  toiletMarkers.forEach(m => map.removeLayer(m));
-  toiletMarkers = [];
+function togglePOI(cat) {
+  if (!POI_CATEGORIES[cat]) return;
+  const btn = document.querySelector(`.poi-btn[data-cat="${cat}"]`);
+  if (activePOI.has(cat)) {
+    activePOI.delete(cat);
+    if (btn) btn.classList.remove('active');
+  } else {
+    activePOI.add(cat);
+    if (btn) btn.classList.add('active');
+  }
+  if (activePOI.size) fetchPOIs();
+  else clearPOIs();
 }
 
-function fetchToilets() {
+function clearPOIs() {
+  poiMarkers.forEach(m => map.removeLayer(m));
+  poiMarkers = [];
+}
+
+// Floor / building line for a place, when OSM has it tagged.
+function poiWhere(t) {
+  const where = [];
+  const lvl = t.level || t['addr:floor'];
+  if (lvl != null && lvl !== '') {
+    const n = String(lvl).split(';')[0];
+    where.push(n.startsWith('-') ? `B${n.slice(1)}F` : `${n}F`);
+  }
+  const building = t['addr:housename'] || t.building_name || (t.building && t.building !== 'yes' ? t.building : '');
+  if (building) where.push(building);
+  if (t['addr:street']) where.push(t['addr:street']);
+  return where.join(' · ');
+}
+
+function fetchPOIs() {
+  if (!activePOI.size) { clearPOIs(); return; }
   const c = map.getCenter();
-  const radius = 1800; // metres around the current view
-  const q = `[out:json][timeout:25];(node["amenity"="toilets"](around:${radius},${c.lat},${c.lng});way["amenity"="toilets"](around:${radius},${c.lat},${c.lng}););out center 80;`;
-  showToast('🚻 Finding restrooms…');
+  const R = 1800; // metres around the current view
+  const here = `(around:${R},${c.lat},${c.lng})`;
+  let body = '';
+  activePOI.forEach(cat => POI_CATEGORIES[cat].filters.forEach(f => { body += `${f}${here};`; }));
+  const q = `[out:json][timeout:25];(${body});out center 150;`;
+  showToast('📍 Finding nearby places…');
   fetch('https://overpass-api.de/api/interpreter', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -1811,28 +1869,39 @@ function fetchToilets() {
   })
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(data => {
-      if (!showToilets) return; // toggled off while loading
-      clearToilets();
+      if (!activePOI.size) return; // all toggled off while loading
+      clearPOIs();
       const els = (data && data.elements) || [];
       els.forEach(el => {
         const lat = el.lat != null ? el.lat : (el.center && el.center.lat);
         const lng = el.lon != null ? el.lon : (el.center && el.center.lon);
         if (lat == null || lng == null) return;
         const t = el.tags || {};
-        const icon = L.divIcon({ html: '🚻', className: 'toilet-pin', iconSize: [22, 22], iconAnchor: [11, 11] });
+        const cat = classifyPOI(t);
+        if (!cat || !activePOI.has(cat)) return;
+        const cfg = POI_CATEGORIES[cat];
+        const icon = L.divIcon({
+          html: `<div class="poi-marker" style="border-color:${cfg.color}">${cfg.emoji}</div>`,
+          className: '', iconSize: [28, 28], iconAnchor: [14, 14],
+        });
         const m = L.marker([lat, lng], { icon }).addTo(map);
+        const where = poiWhere(t);
         const bits = [];
-        if (t.wheelchair === 'yes') bits.push('♿ accessible');
-        if (t.fee === 'yes') bits.push('💰 fee');
-        else if (t.fee === 'no') bits.push('free');
+        if (cat === 'toilets') {
+          if (t.wheelchair === 'yes') bits.push('♿ accessible');
+          if (t.fee === 'yes') bits.push('💰 fee'); else if (t.fee === 'no') bits.push('free');
+        }
         if (t.opening_hours) bits.push('🕐 ' + t.opening_hours);
-        m.bindPopup(`<strong>🚻 ${escapeHtml(t.name || 'Public restroom')}</strong>` +
-          (bits.length ? '<br>' + escapeHtml(bits.join(' · ')) : ''));
-        toiletMarkers.push(m);
+        m.bindPopup(
+          `<strong>${cfg.emoji} ${escapeHtml(t.name || cfg.label)}</strong>` +
+          (where ? `<br>📍 ${escapeHtml(where)}` : '') +
+          (bits.length ? `<br>${escapeHtml(bits.join(' · '))}` : '')
+        );
+        poiMarkers.push(m);
       });
-      showToast(els.length ? `🚻 ${toiletMarkers.length} restroom(s) nearby` : '🚻 None found here — try panning the map');
+      showToast(poiMarkers.length ? `📍 ${poiMarkers.length} place(s) nearby` : '📍 None found here — try panning the map');
     })
-    .catch(() => { showToast('⚠️ Could not load restrooms — try again'); });
+    .catch(() => { showToast('⚠️ Could not load places — try again'); });
 }
 
 // ══════════════════════════════════════════════════════
