@@ -317,6 +317,11 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
 }
 .area-btn:hover{background:#f0f0f0}
 .area-btn.active{background:#1a1a1a;color:white;border-color:#1a1a1a}
+.example-meetup{background:#f9f9f9;border:1px dashed #ccc;opacity:0.75}
+.example-badge{
+  display:inline-block;background:#e0e0e0;color:#666;font-size:10px;font-weight:600;
+  padding:2px 6px;border-radius:4px;margin-left:6px;
+}
 /* On mobile keep it above the bottom sheet (sits at the bottom of the visible map) */
 @media (max-width:768px){
   #venue-jump{bottom:auto;top:calc(50vh - 56px);}
@@ -776,14 +781,10 @@ gtag('config', 'G-5XQZJX2QEK');
 
 <!-- FLOATING MAP BUTTONS -->
 <div id="map-btns">
-  <div class="map-btn" id="btn-heatmap" onclick="toggleHeatmap()" title="Fan heatmap">🔥</div>
-  <div class="map-btn" id="btn-routes" onclick="toggleRoutes();mobileMinimizeSheet()" title="Show routes">✈️</div>
-  <div class="map-btn" id="btn-live" onclick="openLiveModal()" title="Live location sharing">📡</div>
-  <div class="map-btn poi-btn" data-cat="toilets" onclick="togglePOI('toilets')" title="Restrooms">🚻</div>
-  <div class="map-btn poi-btn" data-cat="store" onclick="togglePOI('store')" title="Convenience stores">🏪</div>
-  <div class="map-btn poi-btn" data-cat="atm" onclick="togglePOI('atm')" title="ATMs">🏧</div>
-  <div class="map-btn poi-btn" data-cat="cafe" onclick="togglePOI('cafe')" title="Cafes">☕</div>
-  <div class="map-btn poi-btn" data-cat="subway" onclick="togglePOI('subway')" title="Subway stations / exits">🚇</div>
+  <div class="map-btn poi-btn" data-cat="toilets" onclick="togglePOI('toilets')" title="Restrooms / 화장실">🚻</div>
+  <div class="map-btn poi-btn" data-cat="store" onclick="togglePOI('store')" title="Convenience stores / 편의점">🏪</div>
+  <div class="map-btn poi-btn" data-cat="subway" onclick="togglePOI('subway')" title="Subway / 지하철역">🚇</div>
+  <div class="map-btn" id="btn-my-location-map" onclick="selectMyLocation()" title="My location / 내 위치">📍</div>
 </div>
 
 <!-- Jump-to-venue floating button (label + zoom change per artist) -->
@@ -824,13 +825,6 @@ gtag('config', 'G-5XQZJX2QEK');
         <div class="pill-date">Jun 12–14 · Seoul</div>
       </div>
     </div>
-  </div>
-
-  <!-- My current location (above airport tabs) -->
-  <div style="padding:0 16px">
-    <button id="btn-my-location" onclick="selectMyLocation()" style="width:100%;padding:14px;margin-bottom:10px;background:#1a1a1a;color:white;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
-      📍 My Location / 내 현재 위치
-    </button>
   </div>
 
   <!-- Airport tabs -->
@@ -1266,10 +1260,10 @@ const NEARBY_VENUES = {
 };
 
 const SAMPLE_MEETUPS = [
-  {id:1,concert:'bts',name:'Busan pre-show gathering 🎶',time:'16:00',lat:35.2105,lng:129.0735,langs:['🇺🇸 EN','🇰🇷 KR','🇯🇵 JP'],note:'Exit 2, look for the sign!',members:38,joined:false},
-  {id:2,concert:'bts',name:'International fan meet 🌍',time:'15:30',lat:35.2080,lng:129.0720,langs:['🇺🇸 EN','🇹🇭 TH','🇵🇭 PH'],note:'Bring fan boards',members:24,joined:false},
-  {id:3,concert:'xia',name:'Seoul fan zone ❤️',time:'17:00',lat:37.5205,lng:127.1215,langs:['🇺🇸 EN','🇰🇷 KR'],note:'KSPO DOME Gate A',members:19,joined:false},
-  {id:4,concert:'xia',name:'Pre-show meetup ☕',time:'16:30',lat:37.5188,lng:127.1240,langs:['🇰🇷 KR','🇯🇵 JP','🇨🇳 CN'],note:'Fan café zone near entrance',members:31,joined:false},
+  {id:1,concert:'bts',name:'Busan pre-show gathering 🎶',time:'16:00',lat:35.2105,lng:129.0735,langs:['🇺🇸 EN','🇰🇷 KR','🇯🇵 JP'],note:'Exit 2, look for the sign!',members:38,joined:false,isExample:true},
+  {id:2,concert:'bts',name:'International fan meet 🌍',time:'15:30',lat:35.2080,lng:129.0720,langs:['🇺🇸 EN','🇹🇭 TH','🇵🇭 PH'],note:'Bring fan boards',members:24,joined:false,isExample:true},
+  {id:3,concert:'xia',name:'Seoul fan zone ❤️',time:'17:00',lat:37.5205,lng:127.1215,langs:['🇺🇸 EN','🇰🇷 KR'],note:'KSPO DOME Gate A',members:19,joined:false,isExample:true},
+  {id:4,concert:'xia',name:'Pre-show meetup ☕',time:'16:30',lat:37.5188,lng:127.1240,langs:['🇰🇷 KR','🇯🇵 JP','🇨🇳 CN'],note:'Fan café zone near entrance',members:31,joined:false,isExample:true},
 ];
 
 // ══════════════════════════════════════════════════════
@@ -1823,12 +1817,12 @@ function renderRouteCard(parent, r, idx, c) {
 function renderMeetupCard(parent, m) {
   const c = CONCERTS[m.concert];
   const card = document.createElement('div');
-  card.className = 'meetup-card' + (m.joined ? ' joined' : '');
+  card.className = 'meetup-card' + (m.joined ? ' joined' : '') + (m.isExample ? ' example-meetup' : '');
   card.innerHTML = `
     <div class="mc-left-bar" style="background:${c.color}"></div>
     <div class="mc-top">
       <span class="mc-fandom" style="background:${c.color}18;color:${c.color}">${c.emoji} ${c.fandom}</span>
-      <span class="mc-name">${m.name}</span>
+      <span class="mc-name">${m.name}${m.isExample ? '<span class="example-badge">📌 Example</span>' : ''}</span>
     </div>
     <div class="mc-meta">
       <span>🕐 ${m.time}</span>
@@ -2389,8 +2383,11 @@ function locSearch() {
   const box = document.getElementById('kakao-results');
   if (!q || !box) return;
   box.innerHTML = '<div class="kr-item" style="cursor:default"><div class="kr-name">Searching…</div></div>';
-  if (kakaoPlaces) kakaoPlacesSearch(q, box);
-  else nominatimSearch(q, box);
+  // English query → Nominatim (English addresses). Korean → Kakao if available.
+  const isEnglish = /^[a-zA-Z0-9\s\-.]+$/.test(q);
+  if (isEnglish) nominatimSearch(q, box, 'en,ko');
+  else if (kakaoPlaces) kakaoPlacesSearch(q, box);
+  else nominatimSearch(q, box, 'ko,en');
 }
 
 // Preferred: Kakao Places keyword search, biased near the venue. Dual KO/EN via
@@ -2427,9 +2424,12 @@ function kakaoPlacesSearch(q, box) {
   }, opts);
 }
 
-// Fallback: keyless OpenStreetMap Nominatim, Korea-restricted, dual KO/EN.
-function nominatimSearch(q, box) {
-  fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=kr&accept-language=ko,en&namedetails=1&q=${encodeURIComponent(q)}`)
+// Keyless OpenStreetMap Nominatim, Korea-restricted. accept-language follows the
+// query language: English query → English address, Korean query → Korean address.
+function nominatimSearch(q, box, lang) {
+  const acceptLang = lang || (/^[a-zA-Z0-9\s\-.]+$/.test(q) ? 'en,ko' : 'ko,en');
+  const isEnglish = acceptLang.startsWith('en');
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=kr&accept-language=${acceptLang}&namedetails=1&q=${encodeURIComponent(q)}`)
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(data => {
       box.innerHTML = '';
@@ -2440,19 +2440,21 @@ function nominatimSearch(q, box) {
       data.slice(0, 5).forEach(p => {
         const lat = parseFloat(p.lat), lng = parseFloat(p.lon);
         const nd = p.namedetails || {};
-        const koName = nd['name:ko'] || nd['name'] || (p.display_name || '').split(',')[0];
-        const enName = nd['name:en'] || lookupPlaceEn(koName) || lookupPlaceEn(p.display_name || '');
-        const koAddr = p.display_name || '';
+        // Primary name in the requested language; show the other language as alt.
+        const name = (isEnglish ? (nd['name:en'] || nd['name']) : (nd['name:ko'] || nd['name']))
+          || (p.display_name || '').split(',')[0];
+        const alt = isEnglish ? null : (nd['name:en'] || lookupPlaceEn(name) || lookupPlaceEn(p.display_name || ''));
+        const addr = p.display_name || ''; // already in the requested language
         const item = document.createElement('div');
         item.className = 'kr-item';
         item.innerHTML =
-          `<div class="kr-name">${escapeHtml(koName)}${enName ? ' — ' + escapeHtml(enName) : ''}</div>` +
-          (koAddr ? `<div class="kr-addr">${escapeHtml(koAddr)}</div>` : '');
+          `<div class="kr-name">${escapeHtml(name)}${alt && alt !== name ? ' — ' + escapeHtml(alt) : ''}</div>` +
+          (addr ? `<div class="kr-addr">${escapeHtml(addr)}</div>` : '');
         item.onclick = () => {
-          setPickLocation(lat, lng, koName);
+          setPickLocation(lat, lng, name);
           if (pickMap) pickMap.setView([lat, lng], 16);
           box.innerHTML = '';
-          document.getElementById('kakao-search').value = koName;
+          document.getElementById('kakao-search').value = name;
         };
         box.appendChild(item);
       });
