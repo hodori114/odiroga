@@ -1051,17 +1051,18 @@ const PROTEST_ZONES = [
   },
 ];
 
-// XIA 'GRAVITY' booth layout — around the 88 Seoul Olympic Memorial Tower
-// (~37.5198,127.1265), arranged north (MD) → south (Ticket). Shown at zoom >= 16.
-// NOTE: 'md' and 'lightstick' coords are estimated (top of the source paste was
-// truncated); the other four use the exact provided coordinates.
+// XIA 'GRAVITY' booth layout near the 88 Seoul Olympic Memorial Tower.
+// Arranged north (MD line) → south (Ticket pickup). Shown at zoom >= 16.
 const XIA_BOOTHS = [
-  { id: 'md',            lat: 37.5202, lng: 127.1265, emoji: '🛍️', nameEn: 'MD / Merch Booth',   nameKo: 'MD(굿즈) 부스', desc: 'Official merch — north end (est.)' },
-  { id: 'lightstick',    lat: 37.5200, lng: 127.1270, emoji: '🔦', nameEn: 'Lightstick Service', nameKo: '응원봉 AS',     desc: 'Lightstick repair & battery service (est. coords)' },
-  { id: 'red-sculpture', lat: 37.5197, lng: 127.1268, emoji: '📍', nameEn: 'Red Sculpture',      nameKo: '빨간 조형물',   desc: 'Landmark — main meeting point' },
-  { id: 'hanryeol',      lat: 37.5202, lng: 127.1280, emoji: '🌳', nameEn: 'Hanryeol Plaza',     nameKo: '한열광장',      desc: 'Open plaza — central gathering area' },
+  { id: 'md-line',       lat: 37.5215, lng: 127.1265, emoji: '🚶', nameEn: 'MD Line Start',     nameKo: 'MD줄 선 방향',  desc: 'Merch queue start — northernmost' },
+  { id: 'md-pickup',     lat: 37.5213, lng: 127.1262, emoji: '📦', nameEn: 'MD Pickup',         nameKo: 'MD 현장수령',   desc: 'Merch on-site pickup' },
+  { id: 'md-sales',      lat: 37.5211, lng: 127.1258, emoji: '🛍️', nameEn: 'MD Sales',          nameKo: 'MD 현장판매',   desc: 'Merch on-site sales' },
+  { id: 'coconut-zone',  lat: 37.5207, lng: 127.1262, emoji: '🥥', nameEn: 'Coconut Zone',      nameKo: '코코넛존',      desc: 'XIA fan zone' },
+  { id: 'lightstick',    lat: 37.5211, lng: 127.1272, emoji: '🔦', nameEn: 'Lightstick Service', nameKo: '응원봉 AS',     desc: 'Lightstick repair & battery service (east)' },
+  { id: 'red-sculpture', lat: 37.5202, lng: 127.1268, emoji: '📍', nameEn: 'Red Sculpture',      nameKo: '빨간 조형물',   desc: 'Landmark — central meeting point' },
+  { id: 'hanryeol',      lat: 37.5202, lng: 127.1280, emoji: '🌳', nameEn: 'Hanryeol Plaza',     nameKo: '한열광장',      desc: 'Open plaza — east of the red sculpture' },
   { id: 'preorder-check',lat: 37.5196, lng: 127.1262, emoji: '✅', nameEn: 'Pre-order Check',    nameKo: '선예매 인증',   desc: 'Pre-order verification booth' },
-  { id: 'ticket-pickup', lat: 37.5196, lng: 127.1275, emoji: '🎫', nameEn: 'Ticket Pickup',      nameKo: '티켓 현장수령', desc: 'On-site ticket collection' },
+  { id: 'ticket-pickup', lat: 37.5196, lng: 127.1275, emoji: '🎫', nameEn: 'Ticket Pickup',      nameKo: '티켓 현장수령', desc: 'On-site ticket collection (east)' },
 ];
 let boothMarkers = [];
 
