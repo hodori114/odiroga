@@ -504,6 +504,17 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
   font-size:15px;line-height:1;box-shadow:0 2px 5px rgba(0,0,0,.35);
 }
 .poi-btn.active{background:var(--black);color:#fff}
+/* XIA venue booth markers */
+.vbooth{display:flex;flex-direction:column;align-items:center}
+.vbooth-pin{
+  width:32px;height:32px;border-radius:50%;background:#fff;border:2.5px solid #e8005a;
+  display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;
+  box-shadow:0 2px 5px rgba(0,0,0,.3);
+}
+.vbooth-label{
+  margin-top:2px;font-size:9px;font-weight:700;background:#e8005a;color:#fff;
+  padding:1px 6px;border-radius:8px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.25);
+}
 #gps-btn{
   width:100%;padding:10px;margin-top:8px;border-radius:var(--radius-sm);
   border:1.5px solid var(--gray-200);background:var(--white);
@@ -1038,6 +1049,14 @@ const PROTEST_ZONES = [
   },
 ];
 
+// XIA 'GRAVITY' venue booths (surveyed coords). Markers shown for XIA at zoom >= 16.
+const VENUE_BOOTHS = [
+  { id: 'md-pickup',    lat: 37.5184, lng: 127.1265, emoji: '📦', nameEn: 'MD Pickup',    nameKo: 'MD 현장수령', desc: 'Pre-ordered merchandise pickup' },
+  { id: 'md-sales',     lat: 37.5183, lng: 127.1266, emoji: '🎁', nameEn: 'MD Sales',     nameKo: 'MD 현장판매', desc: 'Official merchandise on-site sales' },
+  { id: 'ramsha',       lat: 37.5183, lng: 127.1267, emoji: '🏪', nameEn: 'Ramsha',       nameKo: '람샤',        desc: 'Ramsha booth' },
+  { id: 'coconut-zone', lat: 37.5183, lng: 127.1268, emoji: '🥥', nameEn: 'Coconut Zone', nameKo: '코코넛존',     desc: 'Fan zone' },
+];
+let venueBoothMarkers = [];
 
 const AIRPORTS = [
   {
@@ -1333,6 +1352,9 @@ function initMap() {
     if (showHeatmap) drawHeatmap();
     if (activePOI.size) { clearTimeout(poiTimer); poiTimer = setTimeout(fetchPOIs, 600); }
   });
+  // XIA venue booth markers: show/hide based on zoom level.
+  map.on('zoomend', renderVenueBooths);
+  renderVenueBooths();
   // DEV: tap the map to read a lat/lng (with copy button).
   map.on('click', function(e) {
     const lat = e.latlng.lat.toFixed(4);
@@ -1475,6 +1497,7 @@ function selectConcert(id) {
   // Refresh danger zones for the newly selected artist's city.
   safetyDismissed = false;
   refreshSafety();
+  renderVenueBooths();
   protestDismissed = false;
   renderProtestZones();
 }
@@ -1788,6 +1811,33 @@ function renderVenueMarkers() {
     const m = L.marker([v.lat, v.lng], { icon }).addTo(map);
     m.on('click', () => map.flyTo([v.lat, v.lng], 15));
     venueMarkers.push(m);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// XIA VENUE BOOTH MARKERS — show only for XIA at zoom >= 16
+// ══════════════════════════════════════════════════════
+function renderVenueBooths() {
+  venueBoothMarkers.forEach(m => map.removeLayer(m));
+  venueBoothMarkers = [];
+  if (currentConcert !== 'xia') return;   // hide for BTS
+  if (map.getZoom() < 16) return;          // hide when zoomed out
+  VENUE_BOOTHS.forEach(b => {
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="vbooth"><div class="vbooth-pin">${b.emoji}</div><div class="vbooth-label">${b.nameEn}</div></div>`,
+      iconSize: [90, 46], iconAnchor: [45, 16],
+    });
+    const m = L.marker([b.lat, b.lng], { icon }).addTo(map);
+    m.bindPopup(`<strong>${b.emoji} ${b.nameEn}</strong><br>${b.nameKo}` + (b.desc ? '<br>' + b.desc : ''));
+    m.on('click', () => {
+      gtag('event', 'click_booth', {
+        booth_id: b.id,
+        booth_name: b.nameEn,
+        artist: 'XIA',
+      });
+    });
+    venueBoothMarkers.push(m);
   });
 }
 
