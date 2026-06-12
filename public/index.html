@@ -883,7 +883,7 @@ gtag('config', 'G-5XQZJX2QEK');
     <div class="field">
       <label>Meeting location</label>
       <div class="loc-search-row">
-        <input id="kakao-search" placeholder="Search a place, station, gate…"
+        <input id="kakao-search" placeholder="Search venue / 장소 검색"
                onkeydown="if(event.key==='Enter'){event.preventDefault();locSearch();}">
         <button type="button" onclick="locSearch()" title="Search">🔍</button>
       </div>
@@ -2287,6 +2287,29 @@ function setPickLocation(lat, lng, label) {
 }
 
 // Keyless place search via OpenStreetMap Nominatim, biased to the concert city.
+// English names for major places (the search API rarely provides English).
+const PLACE_NAME_EN = {
+  'KSPO DOME': 'Olympic Gymnastics Arena',
+  '올림픽체조경기장': 'KSPO DOME',
+  '올림픽공원역': 'Olympic Park Station',
+  '몽촌토성역': 'Mongchontoseong Station',
+  '잠실새내역': 'Jamsil-Saenae Station',
+  '인천국제공항': 'Incheon International Airport',
+  '김포국제공항': 'Gimpo International Airport',
+  '김해국제공항': 'Gimhae International Airport',
+  '부산아시아드주경기장': 'Busan Asiad Main Stadium',
+  'SK올림픽핸드볼경기장': 'SK Olympic Handball Gymnasium',
+};
+
+// Find an English name if the place text contains any mapping keyword.
+function lookupPlaceEn(text) {
+  if (!text) return null;
+  for (const key in PLACE_NAME_EN) {
+    if (text.includes(key)) return PLACE_NAME_EN[key];
+  }
+  return null;
+}
+
 function locSearch() {
   const q = document.getElementById('kakao-search').value.trim();
   const box = document.getElementById('kakao-results');
@@ -2294,7 +2317,8 @@ function locSearch() {
   box.innerHTML = '<div class="kr-item" style="cursor:default"><div class="kr-name">Searching…</div></div>';
   const city = (CONCERTS[currentConcert] && CONCERTS[currentConcert].city) || '';
   const query = /seoul|busan|korea|서울|부산/i.test(q) ? q : `${q} ${city}`;
-  fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=en&q=${encodeURIComponent(query)}`)
+  // Korean-first results + name variants for dual notation.
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=ko&namedetails=1&q=${encodeURIComponent(query)}`)
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(data => {
       box.innerHTML = '';
@@ -2304,16 +2328,20 @@ function locSearch() {
       }
       data.slice(0, 5).forEach(p => {
         const lat = parseFloat(p.lat), lng = parseFloat(p.lon);
-        const name = (p.display_name || '').split(',')[0];
+        const nd = p.namedetails || {};
+        const koName = nd['name:ko'] || nd['name'] || (p.display_name || '').split(',')[0];
+        const enName = nd['name:en'] || lookupPlaceEn(koName) || lookupPlaceEn(p.display_name || '');
+        const koAddr = p.display_name || '';
         const item = document.createElement('div');
         item.className = 'kr-item';
-        item.innerHTML = `<div class="kr-name">${escapeHtml(name)}</div>` +
-                         `<div class="kr-addr">${escapeHtml(p.display_name || '')}</div>`;
+        item.innerHTML =
+          `<div class="kr-name">${escapeHtml(koName)}${enName ? ' — ' + escapeHtml(enName) : ''}</div>` +
+          (koAddr ? `<div class="kr-addr">${escapeHtml(koAddr)}</div>` : '');
         item.onclick = () => {
-          setPickLocation(lat, lng, name);
+          setPickLocation(lat, lng, koName);
           if (pickMap) pickMap.setView([lat, lng], 16);
           box.innerHTML = '';
-          document.getElementById('kakao-search').value = name;
+          document.getElementById('kakao-search').value = koName;
         };
         box.appendChild(item);
       });
