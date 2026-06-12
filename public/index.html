@@ -2825,14 +2825,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const path = window.location.pathname.toLowerCase();
   const urlParams = new URLSearchParams(window.location.search);
 
-  // Artist-specific URL: /bts or /xia
+  // Artist-specific URL: /bts or /xia — set artist, hide the other pill, select.
   if (path.includes('/bts')) {
     currentConcert = 'bts';
     // Check invite code for meetup access
     window._inviteValid = (urlParams.get('invite') === 'ARMY2026');
+    setTimeout(() => {
+      const p = document.getElementById('pill-xia');
+      if (p) p.style.display = 'none';
+      selectConcert('bts');
+    }, 100);
   } else if (path.includes('/xia')) {
     currentConcert = 'xia';
     window._inviteValid = (urlParams.get('invite') === 'COCONUT2026');
+    setTimeout(() => {
+      const p = document.getElementById('pill-bts');
+      if (p) p.style.display = 'none';
+      selectConcert('xia');
+    }, 100);
   } else {
     window._inviteValid = false;
   }
