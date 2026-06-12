@@ -504,19 +504,6 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
   font-size:15px;line-height:1;box-shadow:0 2px 5px rgba(0,0,0,.35);
 }
 .poi-btn.active{background:var(--black);color:#fff}
-/* XIA booth markers */
-.booth-marker{display:flex;flex-direction:column;align-items:center}
-.booth-marker .bm-pin{
-  width:32px;height:32px;border-radius:50%;
-  background:#fff;border:2.5px solid #e8005a;
-  display:flex;align-items:center;justify-content:center;
-  font-size:16px;line-height:1;box-shadow:0 2px 5px rgba(0,0,0,.3);
-}
-.booth-marker .bm-label{
-  margin-top:2px;font-size:9px;font-weight:700;
-  background:#e8005a;color:#fff;padding:1px 6px;border-radius:8px;
-  white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.25);
-}
 #gps-btn{
   width:100%;padding:10px;margin-top:8px;border-radius:var(--radius-sm);
   border:1.5px solid var(--gray-200);background:var(--white);
@@ -1051,20 +1038,9 @@ const PROTEST_ZONES = [
   },
 ];
 
-// XIA 'GRAVITY' booth layout near the 88 Seoul Olympic Memorial Tower.
-// Arranged north (MD line) → south (Ticket pickup). Shown at zoom >= 16.
-const XIA_BOOTHS = [
-  { id: 'md-line',       lat: 37.5215, lng: 127.1265, emoji: '🚶', nameEn: 'MD Line Start',     nameKo: 'MD줄 선 방향',  desc: 'Merch queue start — northernmost' },
-  { id: 'md-pickup',     lat: 37.5213, lng: 127.1262, emoji: '📦', nameEn: 'MD Pickup',         nameKo: 'MD 현장수령',   desc: 'Merch on-site pickup' },
-  { id: 'md-sales',      lat: 37.5211, lng: 127.1258, emoji: '🛍️', nameEn: 'MD Sales',          nameKo: 'MD 현장판매',   desc: 'Merch on-site sales' },
-  { id: 'coconut-zone',  lat: 37.5207, lng: 127.1262, emoji: '🥥', nameEn: 'Coconut Zone',      nameKo: '코코넛존',      desc: 'XIA fan zone' },
-  { id: 'lightstick',    lat: 37.5211, lng: 127.1272, emoji: '🔦', nameEn: 'Lightstick Service', nameKo: '응원봉 AS',     desc: 'Lightstick repair & battery service (east)' },
-  { id: 'red-sculpture', lat: 37.5202, lng: 127.1268, emoji: '📍', nameEn: 'Red Sculpture',      nameKo: '빨간 조형물',   desc: 'Landmark — central meeting point' },
-  { id: 'hanryeol',      lat: 37.5202, lng: 127.1280, emoji: '🌳', nameEn: 'Hanryeol Plaza',     nameKo: '한열광장',      desc: 'Open plaza — east of the red sculpture' },
-  { id: 'preorder-check',lat: 37.5196, lng: 127.1262, emoji: '✅', nameEn: 'Pre-order Check',    nameKo: '선예매 인증',   desc: 'Pre-order verification booth' },
-  { id: 'ticket-pickup', lat: 37.5196, lng: 127.1275, emoji: '🎫', nameEn: 'Ticket Pickup',      nameKo: '티켓 현장수령', desc: 'On-site ticket collection (east)' },
-];
-let boothMarkers = [];
+// XIA 'GRAVITY' booth layout — image overlay (booth-map.jpeg) projected on the
+// map for XIA at zoom >= 16. See toggleBoothMap().
+let boothOverlay = null;
 
 const AIRPORTS = [
   {
@@ -1360,9 +1336,9 @@ function initMap() {
     if (showHeatmap) drawHeatmap();
     if (activePOI.size) { clearTimeout(poiTimer); poiTimer = setTimeout(fetchPOIs, 600); }
   });
-  // XIA booth markers: show/hide based on zoom level.
-  map.on('zoomend', renderBoothMarkers);
-  renderBoothMarkers();
+  // XIA booth layout overlay: show/hide based on zoom level.
+  map.on('zoomend', toggleBoothMap);
+  toggleBoothMap();
   window.addEventListener('resize', () => {
     if (showHeatmap) drawHeatmap();
   });
@@ -1489,6 +1465,7 @@ function selectConcert(id) {
   // Refresh danger zones for the newly selected artist's city.
   safetyDismissed = false;
   refreshSafety();
+  toggleBoothMap();
   protestDismissed = false;
   renderProtestZones();
 }
@@ -1806,31 +1783,32 @@ function renderVenueMarkers() {
 }
 
 // ══════════════════════════════════════════════════════
-// XIA BOOTH MARKERS (KSPO DOME) — show only for XIA at zoom >= 16
+// XIA BOOTH LAYOUT — image overlay, shown only for XIA at zoom >= 16
 // ══════════════════════════════════════════════════════
-function renderBoothMarkers() {
-  // Always clear first so switching artist / zooming out removes them.
-  boothMarkers.forEach(m => map.removeLayer(m));
-  boothMarkers = [];
-  if (currentConcert !== 'xia') return;     // hide for BTS
-  if (map.getZoom() < 16) return;            // hide when zoomed out
-  XIA_BOOTHS.forEach(b => {
-    const icon = L.divIcon({
-      className: '',
-      html: `<div class="booth-marker"><div class="bm-pin">${b.emoji}</div><div class="bm-label">${b.nameEn}</div></div>`,
-      iconSize: [90, 46], iconAnchor: [45, 16],
-    });
-    const m = L.marker([b.lat, b.lng], { icon }).addTo(map);
-    m.bindPopup(`<strong>${b.emoji} ${b.nameEn}</strong><br>${b.nameKo}`);
-    m.on('click', () => {
-      gtag('event', 'click_booth', {
-        booth_id: b.id,
-        booth_name: b.nameEn,
-        artist: 'XIA',
-      });
-    });
-    boothMarkers.push(m);
-  });
+function toggleBoothMap() {
+  if (currentConcert !== 'xia') {
+    if (boothOverlay) { map.removeLayer(boothOverlay); boothOverlay = null; }
+    return;
+  }
+  const zoom = map.getZoom();
+  if (zoom >= 16) {
+    if (!boothOverlay) {
+      const bounds = L.latLngBounds(
+        [37.5160, 127.1190],
+        [37.5230, 127.1320]
+      );
+      boothOverlay = L.imageOverlay('./booth-map.jpeg', bounds, {
+        opacity: 0.75,
+        interactive: false,
+        zIndex: 400
+      }).addTo(map);
+    }
+  } else {
+    if (boothOverlay) {
+      map.removeLayer(boothOverlay);
+      boothOverlay = null;
+    }
+  }
 }
 
 function renderMeetupMarkers() {
