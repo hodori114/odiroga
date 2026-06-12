@@ -1362,8 +1362,8 @@ function initMap() {
     center: [36.8, 127.5], zoom: 8,
     zoomControl: false, attributionControl: true,
   });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors', maxZoom: 19,
+  L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
   }).addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
 
@@ -2291,7 +2291,7 @@ function initPickMap(centerLat, centerLng) {
   if (!pickMap) {
     pickMap = L.map(container, { zoomControl: true, attributionControl: false })
       .setView([centerLat, centerLng], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(pickMap);
+    L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(pickMap);
     const pin = L.divIcon({ html: '📍', className: 'pick-pin', iconSize: [28, 28], iconAnchor: [14, 26] });
     pickMarker = L.marker([centerLat, centerLng], { draggable: true, icon: pin }).addTo(pickMap);
     pickMarker.on('dragend', () => { const ll = pickMarker.getLatLng(); setPickLocation(ll.lat, ll.lng); });
