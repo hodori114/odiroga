@@ -311,6 +311,12 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
   cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3);white-space:nowrap;
 }
 #venue-jump:active{opacity:.85}
+.area-btn{
+  padding:8px 14px;border-radius:20px;border:1px solid #e0e0e0;
+  background:white;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;
+}
+.area-btn:hover{background:#f0f0f0}
+.area-btn.active{background:#1a1a1a;color:white;border-color:#1a1a1a}
 /* On mobile keep it above the bottom sheet (sits at the bottom of the visible map) */
 @media (max-width:768px){
   #venue-jump{bottom:auto;top:calc(50vh - 56px);}
@@ -833,9 +839,24 @@ gtag('config', 'G-5XQZJX2QEK');
     </div>
   </div>
 
+  <!-- My current location (above airport tabs) -->
+  <div style="padding:0 16px">
+    <button id="btn-my-location" onclick="selectMyLocation()" style="width:100%;padding:14px;margin-bottom:10px;background:#1a1a1a;color:white;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+      📍 My Location / 내 현재 위치
+    </button>
+  </div>
+
   <!-- Airport tabs -->
   <div id="airport-tabs">
     <!-- filled by JS -->
+  </div>
+
+  <!-- Quick areas (below airport tabs) -->
+  <div id="area-strip" style="display:flex;gap:6px;margin:8px 16px 0;flex-wrap:wrap">
+    <button class="area-btn" onclick="selectArea(37.5568,126.9236,'Hongdae',this)">🎵 Hongdae</button>
+    <button class="area-btn" onclick="selectArea(37.5133,127.1001,'Jamsil',this)">🏟 Jamsil</button>
+    <button class="area-btn" onclick="selectArea(37.5343,126.9945,'Itaewon',this)">🌍 Itaewon</button>
+    <button class="area-btn" onclick="selectArea(37.5636,126.9869,'Myeongdong',this)">🛍 Myeongdong</button>
   </div>
 
   <!-- My Hotel Bar -->
@@ -1565,6 +1586,45 @@ function goToMyLocation() {
     showToast('📍 You are here');
   }, err => {
     showToast('Could not get location');
+  });
+}
+
+// Panel "My Location" button: GPS -> blue marker + fly. (Routes untouched.)
+function selectMyLocation() {
+  if (!navigator.geolocation) { showToast('GPS not supported'); return; }
+  const btn = document.getElementById('btn-my-location');
+  const orig = btn ? btn.textContent : '';
+  if (btn) btn.textContent = '📍 Locating...';
+  navigator.geolocation.getCurrentPosition(pos => {
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    if (window._myLocMarker) map.removeLayer(window._myLocMarker);
+    window._myLocMarker = L.marker([lat, lng], {
+      icon: L.divIcon({
+        className: '',
+        html: '<div style="background:#4285f4;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3)"></div>',
+        iconSize: [16, 16], iconAnchor: [8, 8],
+      }),
+    }).addTo(map);
+    map.flyTo([lat, lng], 16, { duration: 1 });
+    if (btn) btn.textContent = orig || '📍 My Location / 내 현재 위치';
+    document.querySelectorAll('.area-btn.active').forEach(b => b.classList.remove('active'));
+    showToast('📍 You are here');
+  }, () => {
+    if (btn) btn.textContent = orig || '📍 My Location / 내 현재 위치';
+    showToast('Could not get location');
+  });
+}
+
+// Quick-area button: fly to the area + highlight + GA4. (Routes untouched.)
+function selectArea(lat, lng, name, el) {
+  map.flyTo([lat, lng], 14, { duration: 1 });
+  document.querySelectorAll('.area-btn').forEach(b => b.classList.remove('active'));
+  if (el) el.classList.add('active');
+  showToast('📍 ' + name + ' selected');
+  gtag('event', 'select_location', {
+    location_type: 'area',
+    location_name: name,
+    artist: currentConcert ? currentConcert.toUpperCase() : '',
   });
 }
 
