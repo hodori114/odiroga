@@ -743,6 +743,8 @@ gtag('config', 'G-5XQZJX2QEK');
 </script>
 <!-- Supabase JS (Auth + Realtime) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Kakao Maps SDK (Places search). https + autoload=false; falls back to Nominatim if unavailable. -->
+<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=d2bcea7a35eabce470ff95de1790f42e&libraries=services&autoload=false"></script>
 </head>
 <body>
 
@@ -2336,13 +2338,63 @@ function lookupPlaceEn(text) {
   return null;
 }
 
+// Kakao Places (preferred for Korean POIs). Null until the SDK loads — if the
+// Kakao Map service is disabled/blocked, we fall back to Nominatim.
+let kakaoPlaces = null;
+function initKakaoPlaces() {
+  if (typeof kakao === 'undefined' || !kakao.maps || !kakao.maps.load) return;
+  kakao.maps.load(() => {
+    try { kakaoPlaces = new kakao.maps.services.Places(); }
+    catch (e) { console.warn('Kakao Places init failed:', e); }
+  });
+}
+document.addEventListener('DOMContentLoaded', initKakaoPlaces);
+
 function locSearch() {
   const q = document.getElementById('kakao-search').value.trim();
   const box = document.getElementById('kakao-results');
   if (!q || !box) return;
   box.innerHTML = '<div class="kr-item" style="cursor:default"><div class="kr-name">Searching…</div></div>';
-  // Restrict to Korea (countrycodes=kr) so the raw query matches without mixing
-  // English city names; ko,en gives Korean-first labels + name variants.
+  if (kakaoPlaces) kakaoPlacesSearch(q, box);
+  else nominatimSearch(q, box);
+}
+
+// Preferred: Kakao Places keyword search, biased near the venue. Dual KO/EN via
+// place_name + PLACE_NAME_EN mapping (Kakao returns Korean only).
+function kakaoPlacesSearch(q, box) {
+  const c = CONCERTS[currentConcert];
+  const opts = c
+    ? { location: new kakao.maps.LatLng(c.lat, c.lng), radius: 20000, sort: kakao.maps.services.SortBy.DISTANCE }
+    : {};
+  kakaoPlaces.keywordSearch(q, (data, status) => {
+    if (status !== kakao.maps.services.Status.OK || !data || !data.length) {
+      nominatimSearch(q, box); // fall back if Kakao yields nothing/errors
+      return;
+    }
+    box.innerHTML = '';
+    data.slice(0, 5).forEach(p => {
+      const lat = parseFloat(p.y), lng = parseFloat(p.x);
+      const koName = p.place_name;
+      const enName = lookupPlaceEn(koName);
+      const koAddr = p.road_address_name || p.address_name || '';
+      const item = document.createElement('div');
+      item.className = 'kr-item';
+      item.innerHTML =
+        `<div class="kr-name">${escapeHtml(koName)}${enName ? ' — ' + escapeHtml(enName) : ''}</div>` +
+        (koAddr ? `<div class="kr-addr">${escapeHtml(koAddr)}</div>` : '');
+      item.onclick = () => {
+        setPickLocation(lat, lng, koName);
+        if (pickMap) pickMap.setView([lat, lng], 16);
+        box.innerHTML = '';
+        document.getElementById('kakao-search').value = koName;
+      };
+      box.appendChild(item);
+    });
+  }, opts);
+}
+
+// Fallback: keyless OpenStreetMap Nominatim, Korea-restricted, dual KO/EN.
+function nominatimSearch(q, box) {
   fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=kr&accept-language=ko,en&namedetails=1&q=${encodeURIComponent(q)}`)
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(data => {
