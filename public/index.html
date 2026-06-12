@@ -315,6 +315,19 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
 @media (max-width:768px){
   #venue-jump{bottom:auto;top:calc(50vh - 56px);}
 }
+/* My-location button (inside #map) */
+#my-loc-btn{
+  position:absolute;left:14px;bottom:90px;z-index:1000;
+  width:42px;height:42px;border-radius:50%;border:none;
+  background:#fff;font-size:18px;cursor:pointer;
+  box-shadow:0 2px 8px rgba(0,0,0,0.15);
+  display:flex;align-items:center;justify-content:center;
+}
+#my-loc-btn:active{background:var(--gray-50)}
+@media (max-width:768px){
+  /* avoid the left button column + bottom sheet → top-right of the visible map */
+  #my-loc-btn{left:auto;right:14px;bottom:auto;top:calc(50vh - 60px);}
+}
 .map-btn{
   width:40px;height:40px;border-radius:10px;
   background:rgba(255,255,255,.92);backdrop-filter:blur(10px);
@@ -734,7 +747,7 @@ gtag('config', 'G-5XQZJX2QEK');
 <body>
 
 <!-- MAP + HEATMAP -->
-<div id="map"></div>
+<div id="map"><button id="my-loc-btn" onclick="goToMyLocation()" title="My location / 내 위치">📍</button></div>
 <canvas id="hmap"></canvas>
 
 <!-- HEADER -->
@@ -1540,6 +1553,19 @@ function jumpToVenue() {
   }
 }
 
+function goToMyLocation() {
+  if (!navigator.geolocation) { showToast('GPS not supported'); return; }
+  showToast('📍 Locating…');
+  navigator.geolocation.getCurrentPosition(pos => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    map.flyTo([lat, lng], 16, { duration: 1 });
+    showToast('📍 You are here');
+  }, err => {
+    showToast('Could not get location');
+  });
+}
+
 // ══════════════════════════════════════════════════════
 // AIRPORT TABS
 // ══════════════════════════════════════════════════════
@@ -2315,10 +2341,9 @@ function locSearch() {
   const box = document.getElementById('kakao-results');
   if (!q || !box) return;
   box.innerHTML = '<div class="kr-item" style="cursor:default"><div class="kr-name">Searching…</div></div>';
-  const city = (CONCERTS[currentConcert] && CONCERTS[currentConcert].city) || '';
-  const query = /seoul|busan|korea|서울|부산/i.test(q) ? q : `${q} ${city}`;
-  // Korean-first results + name variants for dual notation.
-  fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=ko&namedetails=1&q=${encodeURIComponent(query)}`)
+  // Restrict to Korea (countrycodes=kr) so the raw query matches without mixing
+  // English city names; ko,en gives Korean-first labels + name variants.
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=kr&accept-language=ko,en&namedetails=1&q=${encodeURIComponent(q)}`)
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(data => {
       box.innerHTML = '';
