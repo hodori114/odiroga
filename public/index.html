@@ -304,6 +304,17 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
   position:fixed;left:14px;top:64px;z-index:499;
   display:flex;flex-direction:column;gap:8px;
 }
+#venue-jump{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:600;
+  background:var(--black);color:#fff;border:none;border-radius:24px;
+  padding:11px 18px;font-family:var(--font-display);font-size:13px;font-weight:700;
+  cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3);white-space:nowrap;
+}
+#venue-jump:active{opacity:.85}
+/* On mobile keep it above the bottom sheet (sits at the bottom of the visible map) */
+@media (max-width:768px){
+  #venue-jump{bottom:auto;top:calc(50vh - 56px);}
+}
 .map-btn{
   width:40px;height:40px;border-radius:10px;
   background:rgba(255,255,255,.92);backdrop-filter:blur(10px);
@@ -766,6 +777,9 @@ gtag('config', 'G-5XQZJX2QEK');
   <div class="map-btn poi-btn" data-cat="cafe" onclick="togglePOI('cafe')" title="Cafes">☕</div>
   <div class="map-btn poi-btn" data-cat="subway" onclick="togglePOI('subway')" title="Subway stations / exits">🚇</div>
 </div>
+
+<!-- Jump-to-venue floating button (label + zoom change per artist) -->
+<button id="venue-jump" onclick="jumpToVenue()">🏟 KSPO DOME</button>
 
 <!-- RIGHT SIDE PANEL -->
 <div id="sheet" class="open">
@@ -1386,6 +1400,7 @@ function initMap() {
   drawRouteLines();
   startSafetyMonitor();
   renderProtestZones();
+  updateVenueJumpButton();
 
   // Event delegation — transport buttons (js-uber / js-kakao / js-gmaps)
   document.getElementById('sheet-body').addEventListener('click', e => {
@@ -1501,8 +1516,28 @@ function selectConcert(id) {
   safetyDismissed = false;
   refreshSafety();
   renderVenueBooths();
+  updateVenueJumpButton();
   protestDismissed = false;
   renderProtestZones();
+}
+
+// ══════════════════════════════════════════════════════
+// JUMP TO VENUE (floating button) — label + zoom per artist
+// ══════════════════════════════════════════════════════
+function updateVenueJumpButton() {
+  const btn = document.getElementById('venue-jump');
+  if (!btn) return;
+  btn.textContent = currentConcert === 'bts'
+    ? '🏟 Busan Asiad Stadium'
+    : '🏟 KSPO DOME';
+}
+
+function jumpToVenue() {
+  if (currentConcert === 'xia') {
+    map.flyTo([37.5183, 127.1270], 18, { duration: 1 }); // KSPO DOME booth area
+  } else if (currentConcert === 'bts') {
+    map.flyTo([35.2094, 129.0728], 17, { duration: 1 }); // Busan Asiad Stadium
+  }
 }
 
 // ══════════════════════════════════════════════════════
