@@ -507,6 +507,13 @@ html,body{height:100%;background:var(--white);font-family:var(--font-body);color
 }
 .loc-search-row button:active{background:var(--gray-50)}
 #kakao-results{margin-top:6px;max-height:124px;overflow-y:auto}
+.quick-locations{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.quick-locations button{
+  padding:6px 10px;border-radius:16px;border:1.5px solid var(--gray-200);
+  background:var(--white);font-size:11px;font-weight:600;color:var(--gray-700);
+  cursor:pointer;white-space:nowrap;transition:background .12s;
+}
+.quick-locations button:active{background:var(--gray-50)}
 .kr-item{
   padding:8px 10px;border:1px solid var(--gray-100);border-radius:var(--radius-sm);
   margin-bottom:5px;cursor:pointer;transition:background .12s;
@@ -827,6 +834,9 @@ gtag('config', 'G-5XQZJX2QEK');
     </div>
   </div>
 
+  <!-- My current location (big button above airport tabs) -->
+  <button id="btn-my-location" onclick="selectMyLocation()" style="width:calc(100% - 32px);margin:8px 16px 4px;padding:14px;background:#1a1a1a;color:white;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">📍 My Location / 내 현재 위치</button>
+
   <!-- Airport tabs -->
   <div id="airport-tabs">
     <!-- filled by JS -->
@@ -905,6 +915,12 @@ gtag('config', 'G-5XQZJX2QEK');
         <button type="button" onclick="locSearch()" title="Search">🔍</button>
       </div>
       <div id="kakao-results"></div>
+      <div class="quick-locations">
+        <button type="button" onclick="quickLoc(37.5183,127.1270,'KSPO DOME')">🏟 KSPO DOME</button>
+        <button type="button" onclick="quickLoc(35.1906,129.0579,'Busan Asiad')">🏟 Busan Asiad</button>
+        <button type="button" onclick="quickLoc(37.5161,127.1309,'Olympic Park Stn')">🚇 Olympic Park</button>
+        <button type="button" onclick="quickLoc(37.5113,127.0857,'Jamsil-Saenae')">🚇 Jamsil-Saenae</button>
+      </div>
       <div id="kakao-map"></div>
       <button type="button" id="gps-btn" onclick="useMyLocation()">📍 Use my current location (GPS)</button>
     </div>
@@ -975,6 +991,9 @@ gtag('config', 'G-5XQZJX2QEK');
     <div class="ob-header">
       <h2>👋 Where are you staying?</h2>
       <p>We'll show you the fastest routes from your hotel to the concert — and compare with going straight from the airport.</p>
+    </div>
+    <div class="ob-section" style="padding-bottom:4px">
+      <button onclick="useMyLocationAndSkip()" style="width:100%;padding:16px;margin-bottom:4px;background:#1a1a1a;color:white;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">📍 Use my current location / 내 현재 위치에서 출발</button>
     </div>
     <div class="ob-section">
       <div class="ob-section-title">City</div>
@@ -1293,10 +1312,15 @@ let poiTimer = null;
 
 // Access state (passcode unlock + anonymous local identity)
 const MEETUP_PASSCODE = 'COCONUT1215';
-let sb = null;              // Supabase client (used for live sharing + news DB, no auth)
+let sb = null;              // Supabase client (auth + live sharing + news DB)
 let unlocked = false;       // passcode entered correctly?
 let localUserId = null;     // anonymous per-device id (localStorage)
 let pendingCreate = false;  // user tried to create a meetup before unlocking
+let currentUser = null;     // Supabase Auth user (Google/Apple OAuth), null if signed out
+
+// A user may CREATE a meet-up if they are signed in (OAuth) OR have entered the
+// passcode. Joining a meet-up never requires either (stays fully open).
+function canCreate() { return !!currentUser || unlocked; }
 
 // Safety / danger-zone state (Seoul real-time city data)
 let dangerLayers = [];      // Leaflet circles currently on the map
@@ -2342,6 +2366,16 @@ function setPickLocation(lat, lng, label) {
     : `📌 Set: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 }
 
+// Quick-location preset: set pick location + center the mini-map.
+function quickLoc(lat, lng, label) {
+  setPickLocation(lat, lng, label);
+  if (pickMap) pickMap.setView([lat, lng], 16);
+  const search = document.getElementById('kakao-search');
+  if (search) search.value = label;
+  const box = document.getElementById('kakao-results');
+  if (box) box.innerHTML = '';
+}
+
 // Keyless place search via OpenStreetMap Nominatim, biased to the concert city.
 // English names for major places (the search API rarely provides English).
 const PLACE_NAME_EN = {
@@ -3245,6 +3279,28 @@ function renderObZones() {
 }
 function skipOnboarding() {
   document.getElementById('onboarding').style.display = 'none';
+}
+// Onboarding: grab GPS, close onboarding, drop a blue marker + fly there.
+function useMyLocationAndSkip() {
+  if (!navigator.geolocation) { showToast('⚠️ GPS not supported'); skipOnboarding(); return; }
+  showToast('📍 Locating…');
+  navigator.geolocation.getCurrentPosition(pos => {
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    document.getElementById('onboarding').style.display = 'none';
+    if (window._myLocMarker) map.removeLayer(window._myLocMarker);
+    window._myLocMarker = L.marker([lat, lng], {
+      icon: L.divIcon({
+        className: '',
+        html: '<div style="background:#4285f4;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3)"></div>',
+        iconSize: [16, 16], iconAnchor: [8, 8],
+      }),
+    }).addTo(map);
+    map.flyTo([lat, lng], 15, { duration: 1 });
+    showToast('📍 You are here');
+  }, () => {
+    showToast('⚠️ Could not get location');
+    skipOnboarding();
+  }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
 }
 function confirmOnboarding() {
   if (!obSelectedZone) return;
